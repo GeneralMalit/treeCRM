@@ -1,5 +1,6 @@
-const express = require("express");
-const { hasSupabaseConfig } = require("../services/supabaseClient");
+import express from "express";
+import packageJson from "../../package.json";
+import { env, hasSupabaseConfig } from "../config/env";
 
 const router = express.Router();
 
@@ -12,7 +13,6 @@ router.get("/health", (_req, res) => {
 });
 
 router.get("/version", (_req, res) => {
-  const packageJson = require("../../package.json");
   res.json({
     name: packageJson.name,
     version: packageJson.version,
@@ -22,20 +22,21 @@ router.get("/version", (_req, res) => {
 
 router.get("/health/supabase", async (_req, res) => {
   if (!hasSupabaseConfig) {
-    return res.status(500).json({
+    res.status(500).json({
       status: "error",
       message: "SUPABASE_URL and SUPABASE_KEY are required in backend/.env",
     });
+    return;
   }
 
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 8000);
 
   try {
-    const response = await fetch(`${process.env.SUPABASE_URL}/auth/v1/settings`, {
+    const response = await fetch(`${env.supabaseUrl}/auth/v1/settings`, {
       method: "GET",
       headers: {
-        apikey: process.env.SUPABASE_KEY,
+        apikey: env.supabaseKey,
       },
       signal: controller.signal,
     });
@@ -43,38 +44,41 @@ router.get("/health/supabase", async (_req, res) => {
     clearTimeout(timeout);
 
     if (response.status === 401 || response.status === 403) {
-      return res.status(401).json({
+      res.status(401).json({
         status: "error",
         message: "Supabase reachable, but key is invalid or unauthorized.",
       });
+      return;
     }
 
     if (!response.ok) {
-      return res.status(500).json({
+      res.status(500).json({
         status: "error",
         message: "Supabase reachable, but health probe returned an unexpected status.",
         httpStatus: response.status,
       });
+      return;
     }
 
-    return res.json({
+    res.json({
       status: "ok",
       message: "Supabase auth endpoint is reachable and API key is valid.",
       httpStatus: response.status,
     });
   } catch (error) {
     clearTimeout(timeout);
+
     const message =
-      error.name === "AbortError"
+      error instanceof Error && error.name === "AbortError"
         ? "Supabase health check timed out."
         : "Failed to reach Supabase endpoint.";
 
-    return res.status(500).json({
+    res.status(500).json({
       status: "error",
       message,
-      details: error.message,
+      details: error instanceof Error ? error.message : "Unknown error",
     });
   }
 });
 
-module.exports = { systemRouter: router };
+export const systemRouter = router;

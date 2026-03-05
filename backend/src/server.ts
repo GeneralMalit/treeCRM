@@ -1,7 +1,7 @@
-const { createServer } = require("node:http");
-const { Server } = require("socket.io");
-const { app } = require("./app");
-const { env } = require("./config/env");
+import { createServer } from "node:http";
+import { Server } from "socket.io";
+import { app } from "./app";
+import { env } from "./config/env";
 
 const httpServer = createServer(app);
 
@@ -19,4 +19,3 @@ io.on("connection", (socket) => {
 httpServer.listen(env.port, () => {
   console.log(`Backend listening on http://localhost:${env.port}`);
 });
-

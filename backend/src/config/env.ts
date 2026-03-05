@@ -1,8 +1,8 @@
-const dotenv = require("dotenv");
+import dotenv from "dotenv";
 
 dotenv.config();
 
-const env = {
+export const env = {
   nodeEnv: process.env.NODE_ENV || "development",
   port: Number(process.env.PORT || 4000),
   frontendOrigin: process.env.FRONTEND_ORIGIN || "http://localhost:3000",
@@ -11,5 +11,5 @@ const env = {
   jwtSecret: process.env.JWT_SECRET || "",
 };
 
-module.exports = { env };
-
+export const hasSupabaseConfig = Boolean(env.supabaseUrl && env.supabaseKey);
+export const hasJwtSecret = Boolean(env.jwtSecret);

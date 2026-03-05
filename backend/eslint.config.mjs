@@ -1,11 +1,11 @@
+import js from "@eslint/js";
 import { defineConfig } from "eslint/config";
 import prettier from "eslint-config-prettier";
+import tseslint from "typescript-eslint";
 
 const commonGlobals = {
   console: "readonly",
   process: "readonly",
-  module: "readonly",
-  require: "readonly",
   fetch: "readonly",
   setTimeout: "readonly",
   clearTimeout: "readonly",
@@ -13,10 +13,15 @@ const commonGlobals = {
 
 export default defineConfig([
   {
-    files: ["src/**/*.js"],
+    ignores: ["dist/**", "node_modules/**"],
+  },
+  js.configs.recommended,
+  ...tseslint.configs.recommended,
+  {
+    files: ["src/**/*.ts", "src/**/*.d.ts"],
     languageOptions: {
       ecmaVersion: "latest",
-      sourceType: "commonjs",
+      sourceType: "module",
       globals: commonGlobals,
     },
     rules: {
@@ -25,4 +30,3 @@ export default defineConfig([
   },
   prettier,
 ]);
-

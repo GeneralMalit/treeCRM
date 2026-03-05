@@ -36,17 +36,20 @@ export default function HomePage() {
         <Stack spacing={3}>
           <Box>
             <Typography variant="h4" gutterBottom>
-              TreeCRM Session 1 Shell
+              TreeCRM Session 2 Auth Shell
             </Typography>
             <Typography color="text.secondary">
-              Frontend and backend are scaffolded. Use the links below for placeholder routes.
+              Authentication and role-based routing are available in this iteration.
             </Typography>
           </Box>
 
           <Stack direction="row" spacing={2}>
             <Link href="/login">/login</Link>
-            <Link href="/customer">/customer</Link>
-            <Link href="/employee">/employee</Link>
+            <Link href="/portal">/portal</Link>
+            <Link href="/employee/csr">/employee/csr</Link>
+            <Link href="/employee/manager">/employee/manager</Link>
+            <Link href="/employee/executive">/employee/executive</Link>
+            <Link href="/admin">/admin</Link>
           </Stack>
 
           {health.status === "loading" && <Alert severity="info">Checking backend health...</Alert>}
@@ -57,4 +60,3 @@ export default function HomePage() {
     </Container>
   );
 }
-
