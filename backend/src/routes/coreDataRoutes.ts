@@ -1,7 +1,7 @@
 import express, { type Request, type Response } from "express";
 import { requireAuth } from "../middleware/requireAuth";
 import { requireRole } from "../middleware/requireRole";
-import { hasSupabaseAdmin, supabase, supabaseAdmin } from "../services/supabaseClient";
+import { hasSupabaseAdmin, supabaseAdmin } from "../services/supabaseClient";
 
 type ResourceConfig = {
   path: string;
@@ -24,15 +24,15 @@ const router = express.Router();
 router.use(requireAuth, requireRole("Admin"));
 
 function ensureSupabase(res: Response) {
-  if (!supabase) {
+  if (!hasSupabaseAdmin || !supabaseAdmin) {
     res.status(500).json({
       status: "error",
-      message: "SUPABASE_URL and SUPABASE_KEY are required in backend/.env",
+      message: "SUPABASE_SERVICE_ROLE_KEY is required in backend/.env for admin data operations.",
     });
     return null;
   }
 
-  return supabase;
+  return supabaseAdmin;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -657,11 +657,11 @@ const resources: ResourceConfig[] = [
 ];
 
 async function fetchSingleRecord(table: string, id: string) {
-  if (!supabase) {
+  if (!hasSupabaseAdmin || !supabaseAdmin) {
     throw new Error("Supabase client unavailable.");
   }
 
-  const { data, error } = await supabase.from(table).select("*").eq("id", id).maybeSingle();
+  const { data, error } = await supabaseAdmin.from(table).select("*").eq("id", id).maybeSingle();
   return { data, error };
 }
 
@@ -679,13 +679,8 @@ router.get("/users", async (_req, res) => {
 });
 
 router.post("/users", async (req, res) => {
-  if (!supabase) {
-    res.status(500).json({
-      status: "error",
-      message: "SUPABASE_URL and SUPABASE_KEY are required in backend/.env",
-    });
-    return;
-  }
+  const client = ensureSupabase(res);
+  if (!client) return;
 
   const body = requireBody(req);
   if ("error" in body) {
@@ -699,37 +694,35 @@ router.post("/users", async (req, res) => {
     return;
   }
 
-  const signupResult = await supabase.auth.signUp({
+  const createResult = await client.auth.admin.createUser({
     email: String(parsed.data.email),
     password: String(parsed.data.password),
-    options: {
-      data: {
-        role: parsed.data.role,
-        ...(parsed.data.name ? { name: parsed.data.name } : {}),
-      },
+    email_confirm: true,
+    user_metadata: {
+      role: parsed.data.role,
+      ...(parsed.data.name ? { name: parsed.data.name } : {}),
     },
   });
 
-  if (signupResult.error || !signupResult.data.user) {
+  if (createResult.error || !createResult.data.user) {
     res.status(400).json({
       status: "error",
-      message: signupResult.error?.message ?? "Failed to create auth user.",
+      message: createResult.error?.message ?? "Failed to create auth user.",
     });
     return;
   }
 
-  const { data, error } = await fetchSingleRecord("users", signupResult.data.user.id);
-  if (error) {
+  const { data, error } = await fetchSingleRecord("users", createResult.data.user.id);
+  if (error || !data) {
     res.status(201).json({
       status: "ok",
-      message: "Auth user created, but the public users row could not be fetched immediately.",
+      message: "Auth user created. Public users row may still be syncing from auth metadata.",
       data: {
-        id: signupResult.data.user.id,
-        email: signupResult.data.user.email,
+        id: createResult.data.user.id,
+        email: createResult.data.user.email,
         role: parsed.data.role,
         name: parsed.data.name,
       },
-      emailConfirmationRequired: !signupResult.data.session,
     });
     return;
   }
@@ -737,7 +730,6 @@ router.post("/users", async (req, res) => {
   res.status(201).json({
     status: "ok",
     data,
-    emailConfirmationRequired: !signupResult.data.session,
   });
 });
 
@@ -787,14 +779,59 @@ router.patch("/users/:id", async (req, res) => {
     return;
   }
 
-  const { data, error } = await client.from("users").update(parsed.data).eq("id", id).select("*").maybeSingle();
-  if (error) {
-    res.status(500).json({ status: "error", message: error.message });
+  const { data: existingUser, error: existingUserError } = await client
+    .from("users")
+    .select("id,email,name,role")
+    .eq("id", id)
+    .maybeSingle();
+
+  if (existingUserError) {
+    res.status(500).json({ status: "error", message: existingUserError.message });
     return;
   }
 
-  if (!data) {
+  if (!existingUser) {
     res.status(404).json({ status: "error", message: "Record not found." });
+    return;
+  }
+
+  const nextEmail =
+    typeof parsed.data.email === "string" ? parsed.data.email : String(existingUser.email ?? "");
+  const nextRole = typeof parsed.data.role === "string" ? parsed.data.role : String(existingUser.role ?? "");
+  const nextName =
+    parsed.data.name === null
+      ? null
+      : typeof parsed.data.name === "string"
+        ? parsed.data.name
+        : typeof existingUser.name === "string"
+          ? existingUser.name
+          : null;
+
+  const updateResult = await client.auth.admin.updateUserById(id, {
+    email: nextEmail || undefined,
+    user_metadata: {
+      role: nextRole,
+      ...(nextName !== null ? { name: nextName } : { name: null }),
+    },
+  });
+
+  if (updateResult.error) {
+    res.status(400).json({ status: "error", message: updateResult.error.message });
+    return;
+  }
+
+  const { data, error } = await fetchSingleRecord("users", id);
+  if (error || !data) {
+    res.status(200).json({
+      status: "ok",
+      message: "Auth user updated. Public users row may still be syncing from auth metadata.",
+      data: {
+        id,
+        email: nextEmail || existingUser.email,
+        role: nextRole || existingUser.role,
+        name: nextName,
+      },
+    });
     return;
   }
 
@@ -811,19 +848,13 @@ router.delete("/users/:id", async (req, res) => {
     return;
   }
 
-  let authUserDeleted = false;
-  let authDeletionMessage: string | null = null;
-
-  if (hasSupabaseAdmin && supabaseAdmin) {
-    const adminDeleteResult = await supabaseAdmin.auth.admin.deleteUser(id);
-    if (adminDeleteResult.error) {
-      authDeletionMessage = adminDeleteResult.error.message;
-    } else {
-      authUserDeleted = true;
-    }
-  } else {
-    authDeletionMessage =
-      "SUPABASE_SERVICE_ROLE_KEY is not configured, so the auth user could not be deleted.";
+  const adminDeleteResult = await client.auth.admin.deleteUser(id);
+  if (adminDeleteResult.error) {
+    res.status(400).json({
+      status: "error",
+      message: adminDeleteResult.error.message,
+    });
+    return;
   }
 
   const { data, error } = await client.from("users").delete().eq("id", id).select("*").maybeSingle();
@@ -832,18 +863,11 @@ router.delete("/users/:id", async (req, res) => {
     return;
   }
 
-  if (!data && !authUserDeleted) {
-    res.status(404).json({ status: "error", message: "Record not found." });
-    return;
-  }
-
   res.json({
     status: "ok",
     data: data ?? { id },
-    authUserDeleted,
-    ...(authDeletionMessage
-      ? { message: `Public users row deleted. Auth user delete skipped: ${authDeletionMessage}` }
-      : {}),
+    authUserDeleted: true,
+    ...(data ? {} : { message: "Auth user deleted. Public users row was already removed by trigger." }),
   });
 });
 

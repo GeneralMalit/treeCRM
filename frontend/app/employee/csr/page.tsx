@@ -1,11 +1,11 @@
-import { RoleDashboard } from "@/components/RoleDashboard";
+import { EmployeeTreeWorkspace } from "@/components/EmployeeTreeWorkspace";
 
 export default function EmployeeCsrPage() {
   return (
-    <RoleDashboard
+    <EmployeeTreeWorkspace
       allowedRoles={["CSR"]}
-      title="CSR Workspace"
-      description="CSR operations placeholder for Session 2."
+      title="CSR Tree Workspace"
+      description="Manage assigned customers and cases through the employee tree."
     />
   );
 }

@@ -1,11 +1,11 @@
-import { RoleDashboard } from "@/components/RoleDashboard";
+import { EmployeeTreeWorkspace } from "@/components/EmployeeTreeWorkspace";
 
 export default function EmployeeManagerPage() {
   return (
-    <RoleDashboard
+    <EmployeeTreeWorkspace
       allowedRoles={["Manager"]}
-      title="Manager Workspace"
-      description="Manager team view placeholder for Session 2."
+      title="Manager Tree Workspace"
+      description="Inspect employee workloads and drill into customer cases from the hierarchy."
     />
   );
 }

@@ -1,11 +1,11 @@
-import { RoleDashboard } from "@/components/RoleDashboard";
+import { EmployeeTreeWorkspace } from "@/components/EmployeeTreeWorkspace";
 
 export default function EmployeeExecutivePage() {
   return (
-    <RoleDashboard
+    <EmployeeTreeWorkspace
       allowedRoles={["Executive"]}
-      title="Executive Workspace"
-      description="Executive oversight placeholder for Session 2."
+      title="Executive Tree Workspace"
+      description="View the organization hierarchy and monitor active case distribution."
     />
   );
 }
