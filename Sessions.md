@@ -184,17 +184,35 @@ This checklist tracks the completion of each TreeCRM development session. Each s
 **Objective:** Build customer-facing interface.
 
 ### Tasks
-- [ ] Create dashboard listing all tickets
-- [ ] Implement ticket detail page (status, timeline, messages)
-- [ ] Build ticket submission form (subject, description, category, attachments)
-- [ ] Connect portal to backend API
-- [ ] Ensure tickets appear in CSR tree
-
+- [x] Create dashboard listing all tickets
+- [x] Implement ticket detail page (status, timeline, messages)
+- [x] Build ticket submission form (subject, description, category, attachments)
+- [x] Connect portal to backend API
+- [x] Ensure tickets appear in CSR tree
 **Target Outcome:**
 - Customers can create tickets
 - Customers can view/update status and chat
 - Tickets reflect in CSR interface
 
+**Summary (March 6, 2026):**
+- Added new customer portal backend routes under /portal/tickets for authenticated Customer users:
+  - GET /portal/tickets (dashboard list)
+  - POST /portal/tickets (ticket creation with subject, description, category, attachments)
+  - GET /portal/tickets/:caseId (ticket detail with status, timeline, and conversation)
+  - POST /portal/tickets/:caseId/messages (customer chat messages)
+- Added automatic customer profile provisioning (customers row) for authenticated customer users when missing.
+- Added automatic CSR assignment during ticket creation using least-active-load selection across CSR users, so newly created tickets immediately appear in the CSR employee tree.
+- Added timeline enrichment by recording system messages when CSR status changes (PATCH /employee/cases/:caseId), enabling customer-visible status transition history.
+- Added frontend customer portal implementation:
+  - /portal dashboard page with ticket list and ticket submission form
+  - /portal/[ticketId] detail page showing ticket metadata, status flow, timeline, and message thread with send-message action
+  - new frontend/lib/customerPortal.ts typed API client
+- Added Supabase migration 20260306_session_6_customer_portal.sql to extend public.cases with:
+  - category text not null default 'General'
+  - attachments jsonb not null default '[]'::jsonb
+  - integrity check cases_attachments_must_be_array
+  - cases_category_idx index
+- Follow-up completed (March 6, 2026): applied via Supabase MCP as migration `session_6_customer_portal` (version `20260306102029`).
 ---
 
 ## Session 7 — Chat System
@@ -202,16 +220,41 @@ This checklist tracks the completion of each TreeCRM development session. Each s
 **Objective:** Enable real-time communication.
 
 ### Tasks
-- [ ] Integrate Socket.io for real-time chat
-- [ ] Implement customer ? CSR messaging
-- [ ] Implement internal employee chat (CSR ? Manager/Executive)
-- [ ] Store messages in database
-- [ ] Trigger notifications for new messages
+- [x] Integrate Socket.io for real-time chat
+- [x] Implement customer ? CSR messaging
+- [x] Implement internal employee chat (CSR ? Manager/Executive)
+- [x] Store messages in database
+- [x] Trigger notifications for new messages
 
 **Target Outcome:**
 - Real-time chat works
 - Messages appear instantly
 - Notifications triggered
+
+**Summary (March 6, 2026):**
+- Added authenticated Socket.io realtime infrastructure on the backend with role-aware room joins:
+  - case rooms (`case:<caseId>`) for customer/assigned CSR ticket chat
+  - internal rooms (`internal:<userA>:<userB>`) for employee direct chat
+  - user rooms (`user:<userId>`) for realtime notification delivery
+- Added new backend employee chat APIs:
+  - `GET /employee/cases/:caseId/messages`
+  - `POST /employee/cases/:caseId/messages`
+  - `GET /employee/internal-chat/contacts`
+  - `GET /employee/internal-chat/:peerUserId/messages`
+  - `POST /employee/internal-chat/:peerUserId/messages`
+- Extended customer ticket messaging endpoint (`POST /portal/tickets/:caseId/messages`) to emit realtime case message events and create notifications for assigned CSRs.
+- Implemented notification creation + realtime push for both chat channels:
+  - customer -> CSR case messages
+  - CSR -> customer case messages
+  - employee internal direct messages
+- Added Supabase migration `20260306_session_7_chat_system.sql` and applied via MCP as migration `session_7_chat_system` (version `20260306105648`) to create `public.internal_messages` with indexes.
+- Updated frontend chat experience:
+  - customer ticket detail page now joins case rooms and receives CSR replies in realtime
+  - CSR case detail now includes realtime customer chat thread + reply form
+  - employee workspace now includes realtime internal chat panel with role-filtered contacts, live conversation updates, and latest notification feed
+- Validation completed:
+  - backend `npm run lint` + `npm run build`
+  - frontend `npm run lint` + `npm run build`
 
 ---
 
@@ -282,6 +325,7 @@ This checklist tracks the completion of each TreeCRM development session. Each s
 
 **Execution Reminder (MCP First):**
 - For Session 2 auth testing and user setup, use the Supabase MCP server first (create users, set role metadata, verify auth paths) before manual Dashboard workflows.
+
 
 
 

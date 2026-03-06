@@ -733,6 +733,7 @@ router.patch("/employee/cases/:caseId", requireAuth, requireRole("CSR"), async (
     return;
   }
 
+  const previousStatus = caseResult.data.status;
   const { data, error } = await client
     .from("cases")
     .update(parsedBody.data)
@@ -764,6 +765,16 @@ router.patch("/employee/cases/:caseId", requireAuth, requireRole("CSR"), async (
       message: "Failed to parse updated case payload.",
     });
     return;
+  }
+
+  if (parsedCase.status !== previousStatus) {
+    await client.from("messages").insert({
+      case_id: parsedCase.id,
+      sender_id: viewer.sub,
+      sender_role: "CSR",
+      message_type: "system",
+      message_text: `Status updated to ${parsedCase.status}.`,
+    });
   }
 
   res.json({

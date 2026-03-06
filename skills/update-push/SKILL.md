@@ -21,7 +21,7 @@ description: Keep Sessions.md and OVERVIEW.md aligned after finishing work by re
 
 4. **Stage, commit, and push**
    - Run `git status` and then `git add -A` to stage all changes in Sessions, Overview, or other supporting files.
-   - Commit with a message consisting of 2–5 sentences that summarize the update (DO NOT MENTION 'SESSIONS', just summarize what the update has been about), any overview adjustments, and the reason the codebase (or plan) moved forward.
+   - Commit with a message consisting of 2–5 sentences that summarize the update (DO NOT SAY "SESSION" OR EXPLAIN THE WORK AS DOCUMENTATION CHANGES), focus on the delivered functionality, and describe why the codebase or plan moved forward.
    - Finish by running `git push` so the shared repository reflects the new documentation.
 
 ## Notes

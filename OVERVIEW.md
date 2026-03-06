@@ -53,7 +53,8 @@ Handles business logic beyond basic database operations, including:
 Current backend structure also includes:
 - auth routes for register, login, session inspection, and logout
 - admin-protected CRUD routes under `/data/*` for core CRM models
-- a Socket.io server scaffolded for realtime features
+- authenticated Socket.io room orchestration for case chat, internal employee chat, and user-level notification push
+- employee chat APIs for case conversations (`/employee/cases/:caseId/messages`) and internal direct threads (`/employee/internal-chat/*`)
 
 Uses Supabase PostgreSQL, with realtime chat/notifications via Socket.io. Deployed on Render free tier.
 
@@ -266,6 +267,8 @@ Manager <-> Executive
 
 Chat context includes employee name, role, schedule, and active cases. Internal chats are separate from customer conversations.
 
+**Status (March 6, 2026):** Realtime internal employee chat is now implemented for employee roles with role-filtered contacts, persisted direct messages (`public.internal_messages`), and notification fan-out through Socket.io user rooms.
+
 ## Customer Portal
 Customers do not see the org tree; they use a simplified portal.
 
@@ -278,6 +281,8 @@ Capabilities:
 - review ticket history
 
 Customers cannot access internal data.
+
+**Status (March 6, 2026):** Session 6 customer portal scope is complete. Customers can create tickets, view ticket detail/timeline, and exchange messages with support. Session 7 added realtime delivery so new CSR replies appear without manual refresh.
 
 ### Customer Ticket Page
 Includes three sections:
@@ -330,6 +335,13 @@ Realtime behavior via live updates:
 Customer message -> CSR notification
 CSR reply -> Customer sees message instantly
 ```
+
+**Status (March 6, 2026):** This behavior is now live via Socket.io on both customer ticket pages and employee workspace chat panels.
+
+## Current Risks & Dependencies
+- RLS policies for the Session 3 public tables remain a planned hardening task and are still pending.
+- Session 6 smoke test reliability can be impacted by Supabase email-rate limits when creating multiple fresh auth users quickly.
+- Next dependency for roadmap alignment is Session 8 (endorsement and reassignment workflows) so internal chat and notifications can be reused by escalation events.
 
 ## Performance Metrics
 Managers and executives track CSR metrics:
