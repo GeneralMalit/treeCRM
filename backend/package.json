@@ -8,7 +8,6 @@
     "build": "tsc -p tsconfig.json",
     "start": "node dist/server.js",
     "lint": "eslint \"src/**/*.{ts,d.ts}\"",
-    "test:session3": "tsx scripts/session3CrudSmokeTest.ts",
     "format": "prettier --write ."
   },
   "keywords": [
