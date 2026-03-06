@@ -1,19 +1,35 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Alert,
   Box,
   Button,
+  Checkbox,
   Chip,
+  CircularProgress,
   Container,
   Divider,
+  FormControl,
+  InputLabel,
+  ListItemText,
+  MenuItem,
   Paper,
+  Select,
   Stack,
+  TextField,
   Typography,
 } from "@mui/material";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import {
+  addInternalNote,
+  fetchCaseManagementDetails,
+  updateCaseStatusPriority,
+  updateCaseTags,
+  type CaseTagOption,
+  type InternalNote,
+} from "@/lib/caseManagement";
 import {
   clearStoredAccessToken,
   getLandingRoute,
@@ -21,7 +37,14 @@ import {
   logout,
   me,
 } from "@/lib/auth";
-import { fetchEmployeeTree, type EmployeeTreeCase, type EmployeeTreeCustomer, type EmployeeTreeEmployee } from "@/lib/employeeTree";
+import {
+  fetchEmployeeTree,
+  type CasePriority,
+  type CaseStatus,
+  type EmployeeTreeCase,
+  type EmployeeTreeCustomer,
+  type EmployeeTreeEmployee,
+} from "@/lib/employeeTree";
 import type { Role } from "@/lib/roles";
 
 type EmployeeTreeWorkspaceProps = {
@@ -63,6 +86,11 @@ type SelectedNode =
       caseItem: EmployeeTreeCase;
     };
 
+type ActionFeedback = {
+  type: "success" | "error";
+  message: string;
+};
+
 const priorityStyleMap: Record<
   EmployeeTreeCase["priority"],
   { border: string; background: string; chipColor: "error" | "warning" | "info" }
@@ -83,6 +111,14 @@ const priorityStyleMap: Record<
     chipColor: "info",
   },
 };
+
+const CASE_STATUSES: CaseStatus[] = ["Open", "In Progress", "Resolved", "Dropped"];
+const CASE_PRIORITIES: CasePriority[] = ["High", "Medium", "Low"];
+const PRIORITY_RING_LAYOUT: Array<{ priority: CasePriority; label: string; width: string }> = [
+  { priority: "High", label: "High Priority (Inner Arc)", width: "58%" },
+  { priority: "Medium", label: "Medium Priority (Middle Arc)", width: "78%" },
+  { priority: "Low", label: "Low Priority (Outer Arc)", width: "96%" },
+];
 
 function safeFormatDate(value: string): string {
   const parsed = new Date(value);
@@ -129,11 +165,100 @@ function pickInitialSelectedNode(employeeNodes: EmployeeTreeEmployee[]): Selecte
   };
 }
 
+function pickCaseNodeById(employeeNodes: EmployeeTreeEmployee[], caseId: string): SelectedNode | null {
+  for (const employee of employeeNodes) {
+    for (const customer of employee.customers) {
+      const caseItem = customer.cases.find((entry) => entry.id === caseId);
+      if (caseItem) {
+        return {
+          kind: "case",
+          employee,
+          customer,
+          caseItem,
+        };
+      }
+    }
+  }
+
+  return null;
+}
+
+function findSelectedNodeInTree(
+  employeeNodes: EmployeeTreeEmployee[],
+  selectedNode: SelectedNode | null,
+): SelectedNode | null {
+  if (!selectedNode) {
+    return pickInitialSelectedNode(employeeNodes);
+  }
+
+  if (selectedNode.kind === "employee") {
+    const employee = employeeNodes.find((node) => node.id === selectedNode.employee.id);
+    return employee ? { kind: "employee", employee } : pickInitialSelectedNode(employeeNodes);
+  }
+
+  if (selectedNode.kind === "customer") {
+    const employee = employeeNodes.find((node) => node.id === selectedNode.employee.id);
+    if (!employee) {
+      return pickInitialSelectedNode(employeeNodes);
+    }
+
+    const customer = employee.customers.find((node) => node.id === selectedNode.customer.id);
+    return customer ? { kind: "customer", employee, customer } : pickInitialSelectedNode(employeeNodes);
+  }
+
+  return pickCaseNodeById(employeeNodes, selectedNode.caseItem.id) ?? pickInitialSelectedNode(employeeNodes);
+}
+
 export function EmployeeTreeWorkspace({ allowedRoles, title, description }: EmployeeTreeWorkspaceProps) {
   const router = useRouter();
   const [state, setState] = useState<ViewState>({ status: "loading" });
   const [selectedNode, setSelectedNode] = useState<SelectedNode | null>(null);
   const [expandedNodes, setExpandedNodes] = useState<Record<string, boolean>>({});
+  const [caseMetaCaseId, setCaseMetaCaseId] = useState<string | null>(null);
+  const [caseMetaLoading, setCaseMetaLoading] = useState(false);
+  const [caseMetaError, setCaseMetaError] = useState<string | null>(null);
+  const [caseTags, setCaseTags] = useState<CaseTagOption[]>([]);
+  const [selectedTagIds, setSelectedTagIds] = useState<string[]>([]);
+  const [internalNotes, setInternalNotes] = useState<InternalNote[]>([]);
+  const [statusDraft, setStatusDraft] = useState<CaseStatus>("Open");
+  const [priorityDraft, setPriorityDraft] = useState<CasePriority>("Medium");
+  const [noteDraft, setNoteDraft] = useState("");
+  const [savingCaseFields, setSavingCaseFields] = useState(false);
+  const [savingTags, setSavingTags] = useState(false);
+  const [savingNote, setSavingNote] = useState(false);
+  const [actionFeedback, setActionFeedback] = useState<ActionFeedback | null>(null);
+
+  const selectedCaseId = selectedNode?.kind === "case" ? selectedNode.caseItem.id : null;
+  const isCsrSession = state.status === "ready" && state.data.user.role === "CSR";
+
+  const refreshTreeForCurrentUser = useCallback(
+    async (accessToken: string, user: ReadyState["user"], preferredCaseId?: string) => {
+      const tree = await fetchEmployeeTree(accessToken);
+      const nextState: ReadyState = {
+        user,
+        tree,
+      };
+
+      setExpandedNodes((current) => ({
+        ...buildDefaultExpandedTree(tree.data),
+        ...current,
+      }));
+
+      setSelectedNode((currentSelectedNode) => {
+        if (preferredCaseId) {
+          const preferred = pickCaseNodeById(tree.data, preferredCaseId);
+          if (preferred) {
+            return preferred;
+          }
+        }
+
+        return findSelectedNodeInTree(tree.data, currentSelectedNode);
+      });
+
+      setState({ status: "ready", data: nextState });
+    },
+    [],
+  );
 
   useEffect(() => {
     let cancelled = false;
@@ -192,6 +317,63 @@ export function EmployeeTreeWorkspace({ allowedRoles, title, description }: Empl
     };
   }, [allowedRoles, router]);
 
+  useEffect(() => {
+    if (!isCsrSession || !selectedCaseId) {
+      setCaseMetaCaseId(null);
+      setCaseMetaLoading(false);
+      setCaseMetaError(null);
+      setCaseTags([]);
+      setSelectedTagIds([]);
+      setInternalNotes([]);
+      setStatusDraft("Open");
+      setPriorityDraft("Medium");
+      setNoteDraft("");
+      setActionFeedback(null);
+      return;
+    }
+
+    const accessToken = getStoredAccessToken();
+    if (!accessToken) {
+      router.replace("/login");
+      return;
+    }
+
+    let cancelled = false;
+    setCaseMetaCaseId(selectedCaseId);
+    setCaseMetaLoading(true);
+    setCaseMetaError(null);
+    setActionFeedback(null);
+
+    fetchCaseManagementDetails(accessToken, selectedCaseId)
+      .then((details) => {
+        if (cancelled) {
+          return;
+        }
+
+        setCaseTags(details.tags);
+        setSelectedTagIds(details.tags.filter((tag) => tag.selected).map((tag) => tag.id));
+        setInternalNotes(details.internalNotes);
+        setStatusDraft(details.case.status);
+        setPriorityDraft(details.case.priority);
+      })
+      .catch((error) => {
+        if (cancelled) {
+          return;
+        }
+
+        setCaseMetaError(error instanceof Error ? error.message : "Failed to load case management details.");
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setCaseMetaLoading(false);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [isCsrSession, selectedCaseId, router]);
+
   const handleLogout = async () => {
     const accessToken = getStoredAccessToken();
     if (accessToken) {
@@ -215,6 +397,101 @@ export function EmployeeTreeWorkspace({ allowedRoles, title, description }: Empl
       ...current,
       [nodeId]: !current[nodeId],
     }));
+  };
+
+  const handleSaveCaseFields = async () => {
+    if (state.status !== "ready" || state.data.user.role !== "CSR" || !selectedCaseId) {
+      return;
+    }
+
+    const accessToken = getStoredAccessToken();
+    if (!accessToken) {
+      router.replace("/login");
+      return;
+    }
+
+    setSavingCaseFields(true);
+    setActionFeedback(null);
+    try {
+      const updatedCase = await updateCaseStatusPriority(accessToken, selectedCaseId, {
+        status: statusDraft,
+        priority: priorityDraft,
+      });
+
+      await refreshTreeForCurrentUser(accessToken, state.data.user, updatedCase.id);
+      setStatusDraft(updatedCase.status);
+      setPriorityDraft(updatedCase.priority);
+      setActionFeedback({ type: "success", message: "Case status and priority updated." });
+    } catch (error) {
+      setActionFeedback({
+        type: "error",
+        message: error instanceof Error ? error.message : "Failed to update case fields.",
+      });
+    } finally {
+      setSavingCaseFields(false);
+    }
+  };
+
+  const handleSaveTags = async () => {
+    if (state.status !== "ready" || state.data.user.role !== "CSR" || !selectedCaseId) {
+      return;
+    }
+
+    const accessToken = getStoredAccessToken();
+    if (!accessToken) {
+      router.replace("/login");
+      return;
+    }
+
+    setSavingTags(true);
+    setActionFeedback(null);
+    try {
+      const tags = await updateCaseTags(accessToken, selectedCaseId, selectedTagIds);
+      setCaseTags(tags);
+      setSelectedTagIds(tags.filter((tag) => tag.selected).map((tag) => tag.id));
+      setActionFeedback({ type: "success", message: "Case tags updated." });
+    } catch (error) {
+      setActionFeedback({
+        type: "error",
+        message: error instanceof Error ? error.message : "Failed to update tags.",
+      });
+    } finally {
+      setSavingTags(false);
+    }
+  };
+
+  const handleAddInternalNote = async () => {
+    if (state.status !== "ready" || state.data.user.role !== "CSR" || !selectedCaseId) {
+      return;
+    }
+
+    const trimmedNote = noteDraft.trim();
+    if (!trimmedNote) {
+      setActionFeedback({ type: "error", message: "Internal note cannot be empty." });
+      return;
+    }
+
+    const accessToken = getStoredAccessToken();
+    if (!accessToken) {
+      router.replace("/login");
+      return;
+    }
+
+    setSavingNote(true);
+    setActionFeedback(null);
+    try {
+      const createdNote = await addInternalNote(accessToken, selectedCaseId, trimmedNote);
+      setInternalNotes((current) => [createdNote, ...current]);
+      setNoteDraft("");
+      setActionFeedback({ type: "success", message: "Internal note added." });
+    } catch (error) {
+      setActionFeedback({
+        type: "error",
+        message: error instanceof Error ? error.message : "Failed to add internal note.",
+      });
+    } finally {
+      setSavingNote(false);
+    }
   };
 
   const renderDetailPane = () => {
@@ -285,6 +562,9 @@ export function EmployeeTreeWorkspace({ allowedRoles, title, description }: Empl
     }
 
     const caseStyle = priorityStyleMap[selectedNode.caseItem.priority];
+    const selectedTags = caseTags.filter((tag) => selectedTagIds.includes(tag.id));
+    const isSelectedCaseMetaCurrent = caseMetaCaseId === selectedNode.caseItem.id;
+
     return (
       <Stack spacing={1.5}>
         <Typography variant="h6">Case</Typography>
@@ -319,6 +599,167 @@ export function EmployeeTreeWorkspace({ allowedRoles, title, description }: Empl
             {selectedNode.caseItem.description || "No description was provided."}
           </Typography>
         </Box>
+
+        {isCsrSession && (
+          <>
+            <Divider />
+            <Typography variant="subtitle1">Case Management</Typography>
+
+            {caseMetaLoading && isSelectedCaseMetaCurrent && (
+              <Stack direction="row" spacing={1} alignItems="center">
+                <CircularProgress size={18} />
+                <Typography variant="body2" color="text.secondary">
+                  Loading tags and internal notes...
+                </Typography>
+              </Stack>
+            )}
+
+            {caseMetaError && isSelectedCaseMetaCurrent && <Alert severity="error">{caseMetaError}</Alert>}
+            {actionFeedback && <Alert severity={actionFeedback.type}>{actionFeedback.message}</Alert>}
+
+            <Stack direction={{ xs: "column", sm: "row" }} spacing={1.25}>
+              <FormControl fullWidth size="small">
+                <InputLabel id="case-status-select-label">Status</InputLabel>
+                <Select
+                  labelId="case-status-select-label"
+                  label="Status"
+                  value={statusDraft}
+                  onChange={(event) => setStatusDraft(event.target.value as CaseStatus)}
+                  disabled={savingCaseFields || caseMetaLoading || !isSelectedCaseMetaCurrent}
+                >
+                  {CASE_STATUSES.map((status) => (
+                    <MenuItem key={status} value={status}>
+                      {status}
+                    </MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+
+              <FormControl fullWidth size="small">
+                <InputLabel id="case-priority-select-label">Priority</InputLabel>
+                <Select
+                  labelId="case-priority-select-label"
+                  label="Priority"
+                  value={priorityDraft}
+                  onChange={(event) => setPriorityDraft(event.target.value as CasePriority)}
+                  disabled={savingCaseFields || caseMetaLoading || !isSelectedCaseMetaCurrent}
+                >
+                  {CASE_PRIORITIES.map((priority) => (
+                    <MenuItem key={priority} value={priority}>
+                      {priority}
+                    </MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+            </Stack>
+
+            <Button
+              variant="contained"
+              onClick={handleSaveCaseFields}
+              disabled={savingCaseFields || caseMetaLoading || !isSelectedCaseMetaCurrent}
+            >
+              {savingCaseFields ? "Saving..." : "Save Status and Priority"}
+            </Button>
+
+            <Divider />
+            <Typography variant="subtitle2">Manual Tags</Typography>
+            <FormControl fullWidth size="small">
+              <InputLabel id="case-tags-select-label">Tags</InputLabel>
+              <Select
+                labelId="case-tags-select-label"
+                label="Tags"
+                multiple
+                value={selectedTagIds}
+                onChange={(event) => {
+                  const nextValue = event.target.value;
+                  setSelectedTagIds(typeof nextValue === "string" ? nextValue.split(",") : nextValue);
+                }}
+                disabled={savingTags || caseMetaLoading || !isSelectedCaseMetaCurrent}
+                renderValue={(selected) => {
+                  const selectedIds = selected as string[];
+                  const selectedNames = caseTags
+                    .filter((tag) => selectedIds.includes(tag.id))
+                    .map((tag) => tag.name);
+                  return selectedNames.length > 0 ? selectedNames.join(", ") : "No tags selected";
+                }}
+              >
+                {caseTags.map((tag) => (
+                  <MenuItem key={tag.id} value={tag.id}>
+                    <Checkbox checked={selectedTagIds.includes(tag.id)} size="small" />
+                    <ListItemText primary={tag.name} secondary={tag.color} />
+                  </MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+
+            {selectedTags.length > 0 && (
+              <Stack direction="row" spacing={0.75} useFlexGap flexWrap="wrap">
+                {selectedTags.map((tag) => (
+                  <Chip
+                    key={tag.id}
+                    size="small"
+                    label={tag.name}
+                    variant="outlined"
+                    sx={{ borderColor: tag.color, color: tag.color }}
+                  />
+                ))}
+              </Stack>
+            )}
+
+            <Button
+              variant="outlined"
+              onClick={handleSaveTags}
+              disabled={savingTags || caseMetaLoading || !isSelectedCaseMetaCurrent}
+            >
+              {savingTags ? "Saving..." : "Save Tags"}
+            </Button>
+
+            <Divider />
+            <Typography variant="subtitle2">Internal Notes</Typography>
+            <TextField
+              multiline
+              minRows={3}
+              value={noteDraft}
+              onChange={(event) => setNoteDraft(event.target.value)}
+              placeholder="Add an internal note for this case..."
+              disabled={savingNote || caseMetaLoading || !isSelectedCaseMetaCurrent}
+            />
+            <Button
+              variant="outlined"
+              onClick={handleAddInternalNote}
+              disabled={savingNote || caseMetaLoading || !isSelectedCaseMetaCurrent}
+            >
+              {savingNote ? "Adding..." : "Add Internal Note"}
+            </Button>
+
+            {internalNotes.length === 0 && (
+              <Typography variant="body2" color="text.secondary">
+                No internal notes yet.
+              </Typography>
+            )}
+
+            {internalNotes.length > 0 && (
+              <Stack spacing={1}>
+                {internalNotes.map((note) => (
+                  <Box
+                    key={note.id}
+                    sx={{
+                      p: 1.25,
+                      borderRadius: 1,
+                      border: "1px solid #E5E7EB",
+                      backgroundColor: "#F9FAFB",
+                    }}
+                  >
+                    <Typography variant="caption" color="text.secondary">
+                      {note.senderRole} | {safeFormatDate(note.createdAt)}
+                    </Typography>
+                    <Typography variant="body2">{note.messageText}</Typography>
+                  </Box>
+                ))}
+              </Stack>
+            )}
+          </>
+        )}
       </Stack>
     );
   };
@@ -464,51 +905,109 @@ export function EmployeeTreeWorkspace({ allowedRoles, title, description }: Empl
                               <Chip size="small" label={`${customer.cases.length} case(s)`} />
                             </Button>
 
-                            {isCustomerExpanded &&
-                              customer.cases.map((caseItem) => {
-                                const isCaseSelected =
-                                  selectedNode?.kind === "case" &&
-                                  selectedNode.employee.id === employee.id &&
-                                  selectedNode.customer.id === customer.id &&
-                                  selectedNode.caseItem.id === caseItem.id;
+                            {isCustomerExpanded && (
+                              <Box sx={{ pl: 3, mt: 1 }}>
+                                <Typography variant="caption" color="text.secondary">
+                                  Priority Semicircle Layout
+                                </Typography>
 
-                                const caseStyle = priorityStyleMap[caseItem.priority];
+                                {PRIORITY_RING_LAYOUT.map((ring) => {
+                                  const casesInRing = customer.cases.filter(
+                                    (caseItem) => caseItem.priority === ring.priority,
+                                  );
 
-                                return (
-                                  <Box key={caseItem.id} sx={{ pl: 3, mt: 1 }}>
-                                    <Button
-                                      fullWidth
-                                      onClick={() =>
-                                        setSelectedNode({
-                                          kind: "case",
-                                          employee,
-                                          customer,
-                                          caseItem,
-                                        })
-                                      }
-                                      variant={isCaseSelected ? "contained" : "text"}
-                                      color={isCaseSelected ? "info" : "inherit"}
+                                  return (
+                                    <Box
+                                      key={`${customer.id}-${ring.priority}`}
                                       sx={{
-                                        justifyContent: "space-between",
-                                        textTransform: "none",
-                                        borderLeft: `4px solid ${caseStyle.border}`,
-                                        backgroundColor: isCaseSelected ? undefined : caseStyle.background,
-                                        "&:hover": {
-                                          backgroundColor: isCaseSelected ? undefined : caseStyle.background,
-                                        },
+                                        mt: 1,
+                                        mx: "auto",
+                                        width: ring.width,
+                                        border: `2px solid ${priorityStyleMap[ring.priority].border}`,
+                                        borderBottom: "none",
+                                        borderRadius: "999px 999px 0 0",
+                                        backgroundColor: priorityStyleMap[ring.priority].background,
+                                        p: 1.25,
                                       }}
                                     >
-                                      <Typography component="span" sx={{ textAlign: "left", mr: 1 }}>
-                                        {caseItem.title}
-                                      </Typography>
-                                      <Stack direction="row" spacing={0.75}>
-                                        <Chip size="small" variant="outlined" label={caseItem.status} />
-                                        <Chip size="small" color={caseStyle.chipColor} label={caseItem.priority} />
+                                      <Stack
+                                        direction="row"
+                                        justifyContent="space-between"
+                                        alignItems="center"
+                                        sx={{ mb: 0.75 }}
+                                      >
+                                        <Typography variant="caption" sx={{ fontWeight: 600 }}>
+                                          {ring.label}
+                                        </Typography>
+                                        <Chip size="small" label={`${casesInRing.length}`} />
                                       </Stack>
-                                    </Button>
-                                  </Box>
-                                );
-                              })}
+
+                                      {casesInRing.length === 0 && (
+                                        <Typography variant="caption" color="text.secondary">
+                                          No cases on this arc.
+                                        </Typography>
+                                      )}
+
+                                      {casesInRing.length > 0 && (
+                                        <Stack direction="row" spacing={0.75} useFlexGap flexWrap="wrap">
+                                          {casesInRing.map((caseItem) => {
+                                            const isCaseSelected =
+                                              selectedNode?.kind === "case" &&
+                                              selectedNode.employee.id === employee.id &&
+                                              selectedNode.customer.id === customer.id &&
+                                              selectedNode.caseItem.id === caseItem.id;
+
+                                            const caseStyle = priorityStyleMap[caseItem.priority];
+
+                                            return (
+                                              <Button
+                                                key={caseItem.id}
+                                                onClick={() =>
+                                                  setSelectedNode({
+                                                    kind: "case",
+                                                    employee,
+                                                    customer,
+                                                    caseItem,
+                                                  })
+                                                }
+                                                variant={isCaseSelected ? "contained" : "outlined"}
+                                                color={isCaseSelected ? "info" : "inherit"}
+                                                size="small"
+                                                sx={{
+                                                  textTransform: "none",
+                                                  borderColor: caseStyle.border,
+                                                  backgroundColor: isCaseSelected
+                                                    ? undefined
+                                                    : caseStyle.background,
+                                                  "&:hover": {
+                                                    borderColor: caseStyle.border,
+                                                    backgroundColor: isCaseSelected
+                                                      ? undefined
+                                                      : caseStyle.background,
+                                                  },
+                                                }}
+                                              >
+                                                <Stack direction="row" spacing={0.5} alignItems="center">
+                                                  <Typography component="span" sx={{ fontSize: "0.78rem" }}>
+                                                    {caseItem.title}
+                                                  </Typography>
+                                                  <Chip
+                                                    size="small"
+                                                    variant="outlined"
+                                                    label={caseItem.status}
+                                                    sx={{ height: 20 }}
+                                                  />
+                                                </Stack>
+                                              </Button>
+                                            );
+                                          })}
+                                        </Stack>
+                                      )}
+                                    </Box>
+                                  );
+                                })}
+                              </Box>
+                            )}
                           </Box>
                         );
                       })}
