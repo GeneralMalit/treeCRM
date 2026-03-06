@@ -8,8 +8,10 @@ export const env = {
   frontendOrigin: process.env.FRONTEND_ORIGIN || "http://localhost:3000",
   supabaseUrl: process.env.SUPABASE_URL || "",
   supabaseKey: process.env.SUPABASE_KEY || "",
+  supabaseServiceRoleKey: process.env.SUPABASE_SERVICE_ROLE_KEY || "",
   jwtSecret: process.env.JWT_SECRET || "",
 };
 
 export const hasSupabaseConfig = Boolean(env.supabaseUrl && env.supabaseKey);
+export const hasSupabaseAdminConfig = Boolean(env.supabaseUrl && env.supabaseServiceRoleKey);
 export const hasJwtSecret = Boolean(env.jwtSecret);
