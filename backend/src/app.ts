@@ -2,6 +2,7 @@ import cors from "cors";
 import express from "express";
 import { env } from "./config/env";
 import { authRouter } from "./routes/authRoutes";
+import { coreDataRouter } from "./routes/coreDataRoutes";
 import { protectedRouter } from "./routes/protectedRoutes";
 import { systemRouter } from "./routes/systemRoutes";
 
@@ -17,6 +18,7 @@ app.use(express.json());
 
 app.use(systemRouter);
 app.use("/auth", authRouter);
+app.use("/data", coreDataRouter);
 app.use(protectedRouter);
 
 app.use((req, res) => {
