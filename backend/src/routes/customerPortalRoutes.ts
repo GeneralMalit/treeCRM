@@ -3,6 +3,7 @@ import { requireAuth } from "../middleware/requireAuth";
 import { requireRole } from "../middleware/requireRole";
 import { createNotification } from "../services/notificationService";
 import { emitCaseChatMessage } from "../services/realtime";
+import { getSystemSettings } from "../services/systemSettings";
 import { hasSupabaseAdmin, supabaseAdmin } from "../services/supabaseClient";
 import type { Role } from "../constants/roles";
 
@@ -36,6 +37,8 @@ type CaseRow = {
   priority: CasePriority;
   category: string;
   attachments: string[];
+  customer_satisfaction_rating: number | null;
+  customer_satisfaction_submitted_at: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -207,6 +210,23 @@ function parseCreateMessageBody(body: unknown): ValidationResult<{ messageText: 
   return { data: { messageText: messageText.data as string } };
 }
 
+function parseCustomerSatisfactionBody(body: unknown): ValidationResult<{ rating: number }> {
+  if (!isRecord(body)) {
+    return { error: "Request body must be a JSON object." };
+  }
+
+  if (typeof body.rating !== "number" || !Number.isFinite(body.rating)) {
+    return { error: "rating must be a number between 1 and 5." };
+  }
+
+  const rating = Math.round(body.rating);
+  if (rating < 1 || rating > 5) {
+    return { error: "rating must be between 1 and 5." };
+  }
+
+  return { data: { rating } };
+}
+
 function getDisplayName(user: { name?: string | null; email: string }): string {
   if (typeof user.name === "string" && user.name.trim()) {
     return user.name.trim();
@@ -280,23 +300,42 @@ function toCaseRows(rows: unknown[]): CaseRow[] {
         typeof row.description === "string" &&
         typeof row.created_at === "string" &&
         typeof row.updated_at === "string" &&
+        (typeof row.customer_satisfaction_rating === "number" ||
+          row.customer_satisfaction_rating === null ||
+          typeof row.customer_satisfaction_rating === "undefined") &&
+        (typeof row.customer_satisfaction_submitted_at === "string" ||
+          row.customer_satisfaction_submitted_at === null ||
+          typeof row.customer_satisfaction_submitted_at === "undefined") &&
         isCaseStatus(row.status) &&
         isCasePriority(row.priority)
       );
     })
-    .map((row) => ({
-      id: row.id as string,
-      customer_id: row.customer_id as string,
-      assigned_to: (row.assigned_to as string | null) ?? null,
-      title: row.title as string,
-      description: row.description as string,
-      status: row.status as CaseStatus,
-      priority: row.priority as CasePriority,
-      category: typeof row.category === "string" && row.category.trim() ? row.category : "General",
-      attachments: normalizeAttachmentList(row.attachments),
-      created_at: row.created_at as string,
-      updated_at: row.updated_at as string,
-    }));
+    .map((row) => {
+      const parsedRating =
+        typeof row.customer_satisfaction_rating === "number"
+          ? Math.round(row.customer_satisfaction_rating)
+          : null;
+
+      return {
+        id: row.id as string,
+        customer_id: row.customer_id as string,
+        assigned_to: (row.assigned_to as string | null) ?? null,
+        title: row.title as string,
+        description: row.description as string,
+        status: row.status as CaseStatus,
+        priority: row.priority as CasePriority,
+        category: typeof row.category === "string" && row.category.trim() ? row.category : "General",
+        attachments: normalizeAttachmentList(row.attachments),
+        customer_satisfaction_rating:
+          parsedRating !== null && parsedRating >= 1 && parsedRating <= 5 ? parsedRating : null,
+        customer_satisfaction_submitted_at:
+          typeof row.customer_satisfaction_submitted_at === "string"
+            ? row.customer_satisfaction_submitted_at
+            : null,
+        created_at: row.created_at as string,
+        updated_at: row.updated_at as string,
+      };
+    });
 }
 
 function toMessageRows(rows: unknown[]): MessageRow[] {
@@ -493,7 +532,7 @@ async function fetchCustomerCase(
   const result = await client
     .from("cases")
     .select(
-      "id,customer_id,assigned_to,title,description,status,priority,category,attachments,created_at,updated_at",
+      "id,customer_id,assigned_to,title,description,status,priority,category,attachments,customer_satisfaction_rating,customer_satisfaction_submitted_at,created_at,updated_at",
     )
     .eq("id", caseId)
     .eq("customer_id", customerId)
@@ -523,6 +562,10 @@ function mapTicketSummary(caseItem: CaseRow, assignedEmployee?: UserRow | null) 
     priority: caseItem.priority,
     category: caseItem.category,
     attachmentCount: caseItem.attachments.length,
+    customerSatisfactionRating: caseItem.customer_satisfaction_rating,
+    customerSatisfactionSubmittedAt: caseItem.customer_satisfaction_submitted_at,
+    canSubmitCustomerSatisfaction:
+      caseItem.status === "Resolved" && caseItem.customer_satisfaction_rating === null,
     createdAt: caseItem.created_at,
     updatedAt: caseItem.updated_at,
     assignedEmployee: assignedEmployee
@@ -619,7 +662,7 @@ router.get("/portal/tickets", async (req, res) => {
   const ticketsResult = await client
     .from("cases")
     .select(
-      "id,customer_id,assigned_to,title,description,status,priority,category,attachments,created_at,updated_at",
+      "id,customer_id,assigned_to,title,description,status,priority,category,attachments,customer_satisfaction_rating,customer_satisfaction_submitted_at,created_at,updated_at",
     )
     .eq("customer_id", customerResult.data.id)
     .order("updated_at", { ascending: false });
@@ -724,6 +767,8 @@ router.post("/portal/tickets", async (req, res) => {
     return;
   }
 
+  const systemSettings = await getSystemSettings();
+
   const caseInsertResult = await client
     .from("cases")
     .insert({
@@ -734,10 +779,10 @@ router.post("/portal/tickets", async (req, res) => {
       category: parsedBody.data.category,
       attachments: parsedBody.data.attachments,
       status: "Open",
-      priority: "Medium",
+      priority: systemSettings.defaultCasePriority,
     })
     .select(
-      "id,customer_id,assigned_to,title,description,status,priority,category,attachments,created_at,updated_at",
+      "id,customer_id,assigned_to,title,description,status,priority,category,attachments,customer_satisfaction_rating,customer_satisfaction_submitted_at,created_at,updated_at",
     )
     .single();
 
@@ -935,6 +980,143 @@ router.get("/portal/tickets/:caseId", async (req, res) => {
       },
       timeline,
       messages: messageItems,
+    },
+  });
+});
+
+router.post("/portal/tickets/:caseId/customer-satisfaction", async (req, res) => {
+  const client = ensureSupabase();
+  if (!client) {
+    res.status(500).json({
+      status: "error",
+      message: "SUPABASE_SERVICE_ROLE_KEY is required in backend/.env for customer portal operations.",
+    });
+    return;
+  }
+
+  const viewer = req.user;
+  if (!viewer) {
+    res.status(401).json({
+      status: "error",
+      message: "Authentication is required.",
+    });
+    return;
+  }
+
+  const caseId = parseUuidParam(req.params.caseId, "caseId");
+  if ("error" in caseId) {
+    res.status(400).json({
+      status: "error",
+      message: caseId.error,
+    });
+    return;
+  }
+
+  const parsedBody = parseCustomerSatisfactionBody(req.body);
+  if ("error" in parsedBody) {
+    res.status(400).json({
+      status: "error",
+      message: parsedBody.error,
+    });
+    return;
+  }
+
+  const customerResult = await ensureCustomerProfile(viewer);
+  if ("error" in customerResult) {
+    res.status(500).json({
+      status: "error",
+      message: customerResult.error,
+    });
+    return;
+  }
+
+  const caseResult = await fetchCustomerCase(caseId.data, customerResult.data.id);
+  if ("error" in caseResult) {
+    res.status(500).json({
+      status: "error",
+      message: caseResult.error,
+    });
+    return;
+  }
+
+  if (!caseResult.data) {
+    res.status(404).json({
+      status: "error",
+      message: "Ticket not found.",
+    });
+    return;
+  }
+
+  if (caseResult.data.status !== "Resolved") {
+    res.status(409).json({
+      status: "error",
+      message: "Customer satisfaction can only be submitted after a ticket is resolved.",
+    });
+    return;
+  }
+
+  if (caseResult.data.customer_satisfaction_rating !== null) {
+    res.status(409).json({
+      status: "error",
+      message: "Customer satisfaction has already been submitted for this ticket.",
+    });
+    return;
+  }
+
+  const submittedAt = new Date().toISOString();
+  const caseUpdateResult = await client
+    .from("cases")
+    .update({
+      customer_satisfaction_rating: parsedBody.data.rating,
+      customer_satisfaction_submitted_at: submittedAt,
+    })
+    .eq("id", caseResult.data.id)
+    .eq("customer_id", customerResult.data.id)
+    .is("customer_satisfaction_rating", null)
+    .select(
+      "id,customer_id,assigned_to,title,description,status,priority,category,attachments,customer_satisfaction_rating,customer_satisfaction_submitted_at,created_at,updated_at",
+    )
+    .maybeSingle();
+
+  if (caseUpdateResult.error) {
+    res.status(400).json({
+      status: "error",
+      message: caseUpdateResult.error.message,
+    });
+    return;
+  }
+
+  const updatedCase = caseUpdateResult.data ? toCaseRows([caseUpdateResult.data as unknown])[0] : null;
+  if (!updatedCase) {
+    res.status(409).json({
+      status: "error",
+      message: "Customer satisfaction was already submitted for this ticket.",
+    });
+    return;
+  }
+
+  await client.from("messages").insert({
+    case_id: updatedCase.id,
+    sender_id: viewer.sub,
+    sender_role: "Customer",
+    message_type: "system",
+    message_text: `Customer satisfaction submitted: ${parsedBody.data.rating}/5.`,
+  });
+
+  if (updatedCase.assigned_to && updatedCase.assigned_to !== viewer.sub) {
+    await createNotification({
+      userId: updatedCase.assigned_to,
+      type: "case_customer_satisfaction",
+      message: `A customer submitted a ${parsedBody.data.rating}/5 satisfaction rating for "${updatedCase.title}".`,
+    });
+  }
+
+  res.status(201).json({
+    status: "ok",
+    data: {
+      ticketId: updatedCase.id,
+      rating: updatedCase.customer_satisfaction_rating,
+      submittedAt: updatedCase.customer_satisfaction_submitted_at,
     },
   });
 });

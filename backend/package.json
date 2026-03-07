@@ -10,6 +10,7 @@
     "lint": "eslint \"src/**/*.{ts,d.ts}\"",
     "test:session3": "tsx scripts/session3CrudSmokeTest.ts",
     "test:session6": "tsx scripts/session6PortalSmokeTest.ts",
+    "test:session10": "tsx scripts/session10E2eSmokeTest.ts",
     "format": "prettier --write ."
   },
   "keywords": [

@@ -332,15 +332,15 @@ This checklist tracks the completion of each TreeCRM development session. Each s
 
 ---
 
-## Session 10 — Admin Panel & Deployment
+## Session 10 ? Admin Panel & Deployment
 
 **Objective:** Finalize admin tools and deploy the system.
 
 ### Tasks
-- [ ] Create admin panel for user and role management
-- [ ] Configure tags, priorities, system settings
-- [ ] Implement explicit customer satisfaction capture (1-5 customer rating on resolved tickets) and use it as the source for CSR `customerSatisfaction` metrics
-- [ ] Conduct end-to-end testing:
+- [x] Create admin panel for user and role management
+- [x] Configure tags, priorities, system settings
+- [x] Implement explicit customer satisfaction capture (1-5 customer rating on resolved tickets) and use it as the source for CSR `customerSatisfaction` metrics
+- [x] Conduct end-to-end testing:
   - Customer ? CSR workflow
   - Chat
   - Endorsements
@@ -348,8 +348,8 @@ This checklist tracks the completion of each TreeCRM development session. Each s
   - Notifications
 - [ ] Deploy frontend ? Vercel
 - [ ] Deploy backend ? Render
-- [ ] Connect backend to Supabase
-- [ ] Enable RLS and add policies for Session 3 public tables (`users`, `customers`, `cases`, `tags`, `case_tags`, `messages`, `endorsements`, `notifications`)
+- [x] Connect backend to Supabase
+- [x] Enable RLS and add policies for Session 3 public tables (`users`, `customers`, `cases`, `tags`, `case_tags`, `messages`, `endorsements`, `notifications`)
 - [ ] Verify live system works
 
 **Target Outcome:**
@@ -358,7 +358,61 @@ This checklist tracks the completion of each TreeCRM development session. Each s
 - Application deployed and operational
 - System ready for use
 
+**Summary (March 7, 2026):**
+- Added a full `/admin` workspace with authenticated Admin-only controls for:
+  - user creation, role updates, and account deletion
+  - tag creation/update/delete
+  - system settings management (`availabilityRefreshMinutes`, `defaultCasePriority`, `priorityStyleMap`)
+- Added backend admin settings APIs:
+  - `GET /admin/settings`
+  - `PATCH /admin/settings`
+- Added `public.system_settings` persistence and wired ticket creation to use configured default case priority.
+- Added explicit customer CSAT capture:
+  - DB fields on `public.cases`: `customer_satisfaction_rating` (1-5) + `customer_satisfaction_submitted_at`
+  - API endpoint: `POST /portal/tickets/:caseId/customer-satisfaction`
+  - Portal UI for resolved-ticket rating submission and CSAT visibility.
+- Replaced proxy CSAT computation with explicit customer ratings in `/employee/tree` metrics (aggregated as a percentage of real 1-5 ratings).
+- Applied Supabase migrations via MCP:
+  - `session_10_admin_deployment` (version `20260307004844`) for CSAT columns, `system_settings`, and Session 3-table RLS policies.
+  - `session_10_manager_assignments` (version `20260307011346`) adding `users.manager_id` support.
+- Validation completed:
+  - backend `npm run lint` + `npm run build`
+  - frontend `npm run lint` + `npm run build`
+  - end-to-end workflow smoke test `npm run test:session10` (customer workflow, chat, endorsements, reassignment, notifications, CSAT metrics).
+- Remaining Session 10 work requires deployment-account access:
+  - Deploy frontend to Vercel
+  - Deploy backend to Render
+  - Verify the live hosted system end-to-end.
+
+
 ---
+
+
+## Session 11 ? Deployment & Live Verification
+
+**Objective:** Complete production deployment and validate the hosted stack.
+
+### Tasks
+- [ ] Authenticate Vercel CLI locally (`vercel login`) and verify account access (`vercel whoami`).
+- [ ] Deploy frontend to Vercel.
+- [ ] Set frontend production environment variable `NEXT_PUBLIC_API_URL` to the deployed backend URL.
+- [ ] Prepare Render access (CLI or dashboard), then deploy backend to Render.
+- [ ] Configure backend production environment variables on Render (`PORT`, `FRONTEND_ORIGIN`, `SUPABASE_URL`, `SUPABASE_KEY`, `SUPABASE_SERVICE_ROLE_KEY`, `JWT_SECRET`).
+- [ ] Verify deployed backend connectivity (`/health`, `/health/supabase`) against production settings.
+- [ ] Verify live hosted workflows end-to-end:
+  - Customer ? CSR ticket workflow
+  - Realtime chat
+  - Endorsements
+  - Reassignments
+  - Notifications
+  - Customer CSAT capture and metric rollups
+- [ ] Optional hardening follow-up: enable RLS + policies for `public.internal_messages`.
+
+**Target Outcome:**
+- Frontend and backend deployed successfully
+- Hosted environment variables configured correctly
+- Live end-to-end workflows validated in production
+- Deployment handoff complete
 
 
 

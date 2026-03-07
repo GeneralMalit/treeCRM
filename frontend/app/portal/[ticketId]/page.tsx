@@ -8,7 +8,11 @@ import {
   Chip,
   Container,
   Divider,
+  FormControl,
+  InputLabel,
+  MenuItem,
   Paper,
+  Select,
   Stack,
   TextField,
   Typography,
@@ -25,6 +29,7 @@ import {
 import {
   fetchPortalTicketDetail,
   postPortalTicketMessage,
+  submitPortalTicketCustomerSatisfaction,
   type PortalMessage,
   type PortalTicketDetailResponse,
 } from "@/lib/customerPortal";
@@ -105,6 +110,8 @@ export default function PortalTicketDetailPage() {
   const [state, setState] = useState<ViewState>({ status: "loading" });
   const [messageDraft, setMessageDraft] = useState("");
   const [sendingMessage, setSendingMessage] = useState(false);
+  const [ratingDraft, setRatingDraft] = useState<number>(5);
+  const [submittingRating, setSubmittingRating] = useState(false);
   const [actionMessage, setActionMessage] = useState<{ type: "success" | "error"; text: string } | null>(
     null,
   );
@@ -228,6 +235,16 @@ export default function PortalTicketDetailPage() {
     };
   }, [state.status, ticketId]);
 
+  const currentTicketRating = state.status === "ready" ? state.data.detail.ticket.customerSatisfactionRating : null;
+
+  useEffect(() => {
+    if (state.status !== "ready") {
+      return;
+    }
+
+    setRatingDraft(currentTicketRating ?? 5);
+  }, [currentTicketRating, state.status]);
+
   const handleLogout = async () => {
     const accessToken = getStoredAccessToken();
     if (accessToken) {
@@ -289,6 +306,51 @@ export default function PortalTicketDetailPage() {
       });
     } finally {
       setSendingMessage(false);
+    }
+  };
+
+  const handleSubmitCustomerSatisfaction = async () => {
+    if (state.status !== "ready" || !ticketId) {
+      return;
+    }
+
+    if (!state.data.detail.ticket.canSubmitCustomerSatisfaction) {
+      return;
+    }
+
+    const accessToken = getStoredAccessToken();
+    if (!accessToken) {
+      router.replace("/login");
+      return;
+    }
+
+    setSubmittingRating(true);
+    setActionMessage(null);
+    try {
+      await submitPortalTicketCustomerSatisfaction(accessToken, ticketId, ratingDraft);
+      const refreshedDetail = await fetchPortalTicketDetail(accessToken, ticketId);
+
+      setState((current) => {
+        if (current.status !== "ready") {
+          return current;
+        }
+
+        return {
+          status: "ready",
+          data: {
+            ...current.data,
+            detail: refreshedDetail,
+          },
+        };
+      });
+      setActionMessage({ type: "success", text: "Thanks! Your customer satisfaction rating was submitted." });
+    } catch (error) {
+      setActionMessage({
+        type: "error",
+        text: error instanceof Error ? error.message : "Failed to submit customer satisfaction.",
+      });
+    } finally {
+      setSubmittingRating(false);
     }
   };
 
@@ -392,6 +454,57 @@ export default function PortalTicketDetailPage() {
                       </Typography>
                     ))}
                   </Stack>
+                )}
+
+                <Divider />
+
+                <Typography variant="subtitle2">Customer Satisfaction</Typography>
+                {state.data.detail.ticket.customerSatisfactionRating !== null ? (
+                  <Stack direction="row" spacing={1} alignItems="center">
+                    <Chip
+                      color="success"
+                      label={`Submitted: ${state.data.detail.ticket.customerSatisfactionRating}/5`}
+                    />
+                    {state.data.detail.ticket.customerSatisfactionSubmittedAt && (
+                      <Typography variant="caption" color="text.secondary">
+                        {safeFormatDate(state.data.detail.ticket.customerSatisfactionSubmittedAt)}
+                      </Typography>
+                    )}
+                  </Stack>
+                ) : state.data.detail.ticket.canSubmitCustomerSatisfaction ? (
+                  <Stack spacing={1}>
+                    <Typography variant="body2" color="text.secondary">
+                      This ticket is resolved. Please rate your support experience.
+                    </Typography>
+                    <Stack direction={{ xs: "column", sm: "row" }} spacing={1}>
+                      <FormControl size="small" sx={{ minWidth: 140 }}>
+                        <InputLabel id="ticket-rating-label">Rating</InputLabel>
+                        <Select
+                          labelId="ticket-rating-label"
+                          label="Rating"
+                          value={String(ratingDraft)}
+                          onChange={(event) => setRatingDraft(Number(event.target.value))}
+                        >
+                          {[5, 4, 3, 2, 1].map((rating) => (
+                            <MenuItem key={rating} value={String(rating)}>
+                              {rating}/5
+                            </MenuItem>
+                          ))}
+                        </Select>
+                      </FormControl>
+                      <Button
+                        variant="contained"
+                        onClick={handleSubmitCustomerSatisfaction}
+                        disabled={submittingRating}
+                      >
+                        {submittingRating ? "Submitting..." : "Submit Rating"}
+                      </Button>
+                    </Stack>
+                  </Stack>
+                ) : (
+                  <Typography variant="body2" color="text.secondary">
+                    Rating becomes available after the ticket is resolved.
+                  </Typography>
                 )}
               </Stack>
             </Paper>

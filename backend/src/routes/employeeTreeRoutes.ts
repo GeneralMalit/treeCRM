@@ -34,6 +34,7 @@ type CaseRow = {
   description: string;
   status: CaseStatus;
   priority: CasePriority;
+  customer_satisfaction_rating: number | null;
   created_at: string;
   updated_at: string;
 };
@@ -74,6 +75,8 @@ type PerformanceMetrics = {
   resolvedCases: number;
   droppedCases: number;
   completedCases: number;
+  ratedCaseCount: number;
+  ratingTotal: number;
 };
 
 type ManagerTeamAllocationMode = "manager_assignment" | "derived_balanced_fallback" | "none";
@@ -197,6 +200,9 @@ function toCaseRows(rows: unknown[]): CaseRow[] {
         typeof row.description === "string" &&
         typeof row.created_at === "string" &&
         typeof row.updated_at === "string" &&
+        (typeof row.customer_satisfaction_rating === "number" ||
+          row.customer_satisfaction_rating === null ||
+          typeof row.customer_satisfaction_rating === "undefined") &&
         isCaseStatus(row.status) &&
         isCasePriority(row.priority)
       );
@@ -209,6 +215,12 @@ function toCaseRows(rows: unknown[]): CaseRow[] {
       description: String(row.description),
       status: row.status as CaseStatus,
       priority: row.priority as CasePriority,
+      customer_satisfaction_rating:
+        typeof row.customer_satisfaction_rating === "number" &&
+        row.customer_satisfaction_rating >= 1 &&
+        row.customer_satisfaction_rating <= 5
+          ? Math.round(row.customer_satisfaction_rating)
+          : null,
       created_at: String(row.created_at),
       updated_at: String(row.updated_at),
     }));
@@ -337,8 +349,15 @@ function buildPerformanceMetrics(caseItems: CaseRow[], resolvedTodayThresholdEpo
   let resolvedToday = 0;
   let resolvedCases = 0;
   let droppedCases = 0;
+  let ratedCaseCount = 0;
+  let ratingTotal = 0;
 
   for (const caseItem of caseItems) {
+    if (typeof caseItem.customer_satisfaction_rating === "number") {
+      ratedCaseCount += 1;
+      ratingTotal += caseItem.customer_satisfaction_rating;
+    }
+
     if (ONGOING_CASE_STATUSES.includes(caseItem.status)) {
       ongoingCases += 1;
     }
@@ -362,11 +381,13 @@ function buildPerformanceMetrics(caseItems: CaseRow[], resolvedTodayThresholdEpo
     ongoingCases,
     resolvedToday,
     customerSatisfaction:
-      completedCases > 0 ? roundToSingleDecimal((resolvedCases / completedCases) * 100) : null,
+      ratedCaseCount > 0 ? roundToSingleDecimal((ratingTotal / (ratedCaseCount * 5)) * 100) : null,
     totalCases: caseItems.length,
     resolvedCases,
     droppedCases,
     completedCases,
+    ratedCaseCount,
+    ratingTotal,
   };
 }
 
@@ -379,6 +400,8 @@ function aggregatePerformanceMetrics(metricRows: PerformanceMetrics[]): Performa
       accumulator.resolvedCases += metrics.resolvedCases;
       accumulator.droppedCases += metrics.droppedCases;
       accumulator.completedCases += metrics.completedCases;
+      accumulator.ratedCaseCount += metrics.ratedCaseCount;
+      accumulator.ratingTotal += metrics.ratingTotal;
       return accumulator;
     },
     {
@@ -388,14 +411,16 @@ function aggregatePerformanceMetrics(metricRows: PerformanceMetrics[]): Performa
       resolvedCases: 0,
       droppedCases: 0,
       completedCases: 0,
+      ratedCaseCount: 0,
+      ratingTotal: 0,
     },
   );
 
   return {
     ...totals,
     customerSatisfaction:
-      totals.completedCases > 0
-        ? roundToSingleDecimal((totals.resolvedCases / totals.completedCases) * 100)
+      totals.ratedCaseCount > 0
+        ? roundToSingleDecimal((totals.ratingTotal / (totals.ratedCaseCount * 5)) * 100)
         : null,
   };
 }
@@ -678,7 +703,9 @@ async function fetchCase(caseId: string): Promise<ValidationResult<CaseRow | nul
 
   const result = await client
     .from("cases")
-    .select("id,customer_id,assigned_to,title,description,status,priority,created_at,updated_at")
+    .select(
+      "id,customer_id,assigned_to,title,description,status,priority,customer_satisfaction_rating,created_at,updated_at",
+    )
     .eq("id", caseId)
     .maybeSingle();
 
@@ -817,7 +844,9 @@ router.get("/employee/tree", requireAuth, requireRole("CSR", "Manager", "Executi
     client.from("customers").select("id,user_id,company,contact_info,created_at"),
     client
       .from("cases")
-      .select("id,customer_id,assigned_to,title,description,status,priority,created_at,updated_at")
+      .select(
+        "id,customer_id,assigned_to,title,description,status,priority,customer_satisfaction_rating,created_at,updated_at",
+      )
       .not("assigned_to", "is", null),
   ]);
 
@@ -1258,7 +1287,9 @@ router.patch("/employee/cases/:caseId", requireAuth, requireRole("CSR"), async (
     .update(parsedBody.data)
     .eq("id", caseId.data)
     .eq("assigned_to", viewer.sub)
-    .select("id,customer_id,assigned_to,title,description,status,priority,created_at,updated_at")
+    .select(
+      "id,customer_id,assigned_to,title,description,status,priority,customer_satisfaction_rating,created_at,updated_at",
+    )
     .maybeSingle();
 
   if (error) {
@@ -2178,7 +2209,9 @@ router.patch(
       .from("cases")
       .update({ assigned_to: nextAssignee.id })
       .eq("id", caseResult.data.id)
-      .select("id,customer_id,assigned_to,title,description,status,priority,created_at,updated_at")
+      .select(
+        "id,customer_id,assigned_to,title,description,status,priority,customer_satisfaction_rating,created_at,updated_at",
+      )
       .maybeSingle();
 
     if (updateCaseResult.error) {

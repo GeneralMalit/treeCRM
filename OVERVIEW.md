@@ -339,10 +339,10 @@ CSR reply -> Customer sees message instantly
 **Status (March 6, 2026):** This behavior is now live via Socket.io on both customer ticket pages and employee workspace chat panels.
 
 ## Current Risks & Dependencies
-- RLS policies for the Session 3 public tables remain a planned hardening task and are still pending.
+- Session 3 public-table RLS hardening is now implemented (`users`, `customers`, `cases`, `tags`, `case_tags`, `messages`, `endorsements`, `notifications`).
 - Session 6 smoke test reliability can be impacted by Supabase email-rate limits when creating multiple fresh auth users quickly.
-- Next dependency for roadmap alignment is Session 10 (admin panel, deployment, and RLS hardening), now that Session 9 metrics and dashboards are complete.
-- `customerSatisfaction` currently uses a proxy (`Resolved / (Resolved + Dropped)` percentage) until explicit customer ratings are captured.
+- `public.internal_messages` still has RLS disabled (outside the Session 3-scope hardening list and still pending).
+- Next dependency is Session 11 deployment completion (Vercel + Render) and live hosted verification.
 
 ## Performance Metrics
 Managers and executives track CSR metrics:
@@ -352,13 +352,12 @@ Managers and executives track CSR metrics:
 
 Metrics are surfaced in employee nodes.
 
-**Status (March 7, 2026):** Session 9 metrics and dashboard scope is now live.
+**Status (March 7, 2026):** Session 10 CSAT follow-up is now implemented.
 - Backend `/employee/tree` now returns role-scoped performance metrics for each employee node (`ongoingCases`, `resolvedToday`, `customerSatisfaction`, and supporting totals).
 - CSR nodes in the tree now surface metrics directly, with matching detail-panel visibility.
 - Manager sessions now include team metrics rollups.
 - Executive/Admin sessions now include manager aggregate rollups, per-manager metric cards, and unassigned-CSR visibility.
-- Customer satisfaction is currently computed as a resolved-vs-closed percentage proxy (`Resolved / (Resolved + Dropped)` percentage).
-- Next coding-session follow-up: add customer CSAT capture in the portal (1-5 rating after a case is resolved), persist rating per case, and switch dashboards to aggregate real customer ratings per CSR.
+- Customer satisfaction is now sourced from explicit customer CSAT submissions (1-5 ratings on resolved tickets), aggregated into employee metrics.
 
 ## End Goal
 TreeCRM aims to be a complete support management platform that merges ticketing simplicity with visual organizational monitoring.

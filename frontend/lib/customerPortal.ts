@@ -19,6 +19,9 @@ export type PortalTicketSummary = {
   priority: CasePriority;
   category: string;
   attachmentCount: number;
+  customerSatisfactionRating: number | null;
+  customerSatisfactionSubmittedAt: string | null;
+  canSubmitCustomerSatisfaction: boolean;
   createdAt: string;
   updatedAt: string;
   assignedEmployee: PortalAssignedEmployee | null;
@@ -58,6 +61,12 @@ export type PortalTicketDetailResponse = {
   ticket: PortalTicketDetail;
   timeline: PortalTimelineItem[];
   messages: PortalMessage[];
+};
+
+export type PortalCustomerSatisfactionSubmission = {
+  ticketId: string;
+  rating: number;
+  submittedAt: string;
 };
 
 type RawResponse = {
@@ -135,6 +144,10 @@ function parseTicketSummary(value: unknown): PortalTicketSummary {
     !isCasePriority(value.priority) ||
     typeof value.category !== "string" ||
     typeof value.attachmentCount !== "number" ||
+    (typeof value.customerSatisfactionRating !== "number" && value.customerSatisfactionRating !== null) ||
+    (typeof value.customerSatisfactionSubmittedAt !== "string" &&
+      value.customerSatisfactionSubmittedAt !== null) ||
+    typeof value.canSubmitCustomerSatisfaction !== "boolean" ||
     typeof value.createdAt !== "string" ||
     typeof value.updatedAt !== "string"
   ) {
@@ -148,6 +161,9 @@ function parseTicketSummary(value: unknown): PortalTicketSummary {
     priority: value.priority,
     category: value.category,
     attachmentCount: value.attachmentCount,
+    customerSatisfactionRating: value.customerSatisfactionRating,
+    customerSatisfactionSubmittedAt: value.customerSatisfactionSubmittedAt,
+    canSubmitCustomerSatisfaction: value.canSubmitCustomerSatisfaction,
     createdAt: value.createdAt,
     updatedAt: value.updatedAt,
     assignedEmployee: parseAssignedEmployee(value.assignedEmployee),
@@ -282,6 +298,28 @@ function parseCreatedMessage(body: unknown): PortalMessage {
   return parseMessage(body.data.message);
 }
 
+function parseCustomerSatisfactionSubmission(
+  body: unknown,
+): PortalCustomerSatisfactionSubmission {
+  if (!isRecord(body) || !isRecord(body.data)) {
+    throw new Error("Unexpected customer satisfaction response.");
+  }
+
+  if (
+    typeof body.data.ticketId !== "string" ||
+    typeof body.data.rating !== "number" ||
+    typeof body.data.submittedAt !== "string"
+  ) {
+    throw new Error("Unexpected customer satisfaction response format.");
+  }
+
+  return {
+    ticketId: body.data.ticketId,
+    rating: body.data.rating,
+    submittedAt: body.data.submittedAt,
+  };
+}
+
 export async function fetchPortalTickets(accessToken: string): Promise<PortalDashboardResponse> {
   const response = await fetch(`${API_BASE_URL}/portal/tickets`, {
     headers: {
@@ -363,4 +401,26 @@ export async function postPortalTicketMessage(
   }
 
   return parseCreatedMessage(rawBody);
+}
+
+export async function submitPortalTicketCustomerSatisfaction(
+  accessToken: string,
+  ticketId: string,
+  rating: number,
+): Promise<PortalCustomerSatisfactionSubmission> {
+  const response = await fetch(`${API_BASE_URL}/portal/tickets/${ticketId}/customer-satisfaction`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${accessToken}`,
+    },
+    body: JSON.stringify({ rating }),
+  });
+
+  const rawBody = (await parseJsonResponse(response)) as RawResponse;
+  if (!response.ok) {
+    throw new Error(extractErrorMessage(rawBody, "Failed to submit customer satisfaction."));
+  }
+
+  return parseCustomerSatisfactionSubmission(rawBody);
 }

@@ -366,6 +366,17 @@ export default function PortalPage() {
                           <Chip size="small" label={ticket.status} />
                           <Chip size="small" variant="outlined" label={ticket.priority} />
                           <Chip size="small" variant="outlined" label={ticket.category} />
+                          {ticket.customerSatisfactionRating !== null && (
+                            <Chip
+                              size="small"
+                              color="success"
+                              variant="outlined"
+                              label={`CSAT ${ticket.customerSatisfactionRating}/5`}
+                            />
+                          )}
+                          {ticket.canSubmitCustomerSatisfaction && (
+                            <Chip size="small" color="warning" variant="outlined" label="Awaiting CSAT" />
+                          )}
                         </Stack>
                       </Stack>
 

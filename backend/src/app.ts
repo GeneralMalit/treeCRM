@@ -1,6 +1,7 @@
 import cors from "cors";
 import express from "express";
 import { env } from "./config/env";
+import { adminRouter } from "./routes/adminRoutes";
 import { authRouter } from "./routes/authRoutes";
 import { coreDataRouter } from "./routes/coreDataRoutes";
 import { customerPortalRouter } from "./routes/customerPortalRoutes";
@@ -22,6 +23,7 @@ app.use(express.json());
 app.use(systemRouter);
 app.use("/auth", authRouter);
 app.use("/data", coreDataRouter);
+app.use(adminRouter);
 app.use(employeeTreeRouter);
 app.use(employeeChatRouter);
 app.use(customerPortalRouter);

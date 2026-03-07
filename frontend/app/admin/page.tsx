@@ -1,11 +1,5 @@
-import { RoleDashboard } from "@/components/RoleDashboard";
+import { AdminWorkspace } from "@/components/AdminWorkspace";
 
 export default function AdminPage() {
-  return (
-    <RoleDashboard
-      allowedRoles={["Admin"]}
-      title="Admin Workspace"
-      description="Admin control center placeholder for Session 2."
-    />
-  );
+  return <AdminWorkspace />;
 }
