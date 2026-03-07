@@ -341,8 +341,8 @@ CSR reply -> Customer sees message instantly
 ## Current Risks & Dependencies
 - Session 3 public-table RLS hardening is now implemented (`users`, `customers`, `cases`, `tags`, `case_tags`, `messages`, `endorsements`, `notifications`).
 - Session 6 smoke test reliability can be impacted by Supabase email-rate limits when creating multiple fresh auth users quickly.
-- `public.internal_messages` still has RLS disabled (outside the Session 3-scope hardening list and still pending).
-- Next dependency is Session 11 deployment completion (Vercel + Render) and live hosted verification.
+- Session 11 completed database hardening (`public.internal_messages` now enforces RLS as of 2026-03-07); check `docs/session_11_internal_messages_rls.sql` for policy details.
+- Next dependency is Session 12 skill-tree execution plan; see `docs/session_12_skill_tree_plan.md` before starting the visuals + escalation work.
 
 ## Performance Metrics
 Managers and executives track CSR metrics:

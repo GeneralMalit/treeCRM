@@ -419,3 +419,21 @@ This checklist tracks the completion of each TreeCRM development session. Each s
 **Execution Reminder (MCP First):**
 - For Session 2 auth testing and user setup, use the Supabase MCP server first (create users, set role metadata, verify auth paths) before manual Dashboard workflows.
 
+
+---
+
+## Session 12 - Skill Tree Graph, Escalation Clarification, and CSR Custom Tags
+
+**Objective:** Implement the Session 12 execution plan for the employee skill-tree UI redesign, approval-only escalation semantics, and CSR custom tag creation.
+
+### Plan Document Location
+- docs/session_12_skill_tree_plan.md
+- Absolute path: d:\Desktop\Main\Files\Programming\Projects\treeCRM\docs\session_12_skill_tree_plan.md
+
+### Tasks
+- [ ] Implement skill-tree style employee graph UI (CSR radial case rings + manager/executive hierarchy focus flow).
+- [ ] Keep escalation as approval-only (no automatic reassignment on endorsement approval).
+- [ ] Enable CSR custom tag creation during case tag updates.
+- [ ] Run lint/build/smoke validation and complete production verification.
+
+**Execution Reference:** See docs/session_12_skill_tree_plan.md for the full decision-complete implementation details.
