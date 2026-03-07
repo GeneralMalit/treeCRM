@@ -13,6 +13,8 @@ export type EmployeeTreeCase = {
   priority: CasePriority;
   createdAt: string;
   updatedAt: string;
+  hasPendingEndorsement: boolean;
+  pendingEndorsementCount: number;
 };
 
 export type EmployeeTreeCustomer = {
@@ -104,7 +106,9 @@ function parseCase(value: unknown): EmployeeTreeCase {
     !isCaseStatus(value.status) ||
     !isCasePriority(value.priority) ||
     typeof value.createdAt !== "string" ||
-    typeof value.updatedAt !== "string"
+    typeof value.updatedAt !== "string" ||
+    typeof value.hasPendingEndorsement !== "boolean" ||
+    typeof value.pendingEndorsementCount !== "number"
   ) {
     throw new Error("Unexpected case payload format.");
   }
@@ -117,6 +121,8 @@ function parseCase(value: unknown): EmployeeTreeCase {
     priority: value.priority,
     createdAt: value.createdAt,
     updatedAt: value.updatedAt,
+    hasPendingEndorsement: value.hasPendingEndorsement,
+    pendingEndorsementCount: value.pendingEndorsementCount,
   };
 }
 

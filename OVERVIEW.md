@@ -341,7 +341,7 @@ CSR reply -> Customer sees message instantly
 ## Current Risks & Dependencies
 - RLS policies for the Session 3 public tables remain a planned hardening task and are still pending.
 - Session 6 smoke test reliability can be impacted by Supabase email-rate limits when creating multiple fresh auth users quickly.
-- Next dependency for roadmap alignment is Session 8 (endorsement and reassignment workflows) so internal chat and notifications can be reused by escalation events.
+- Next dependency for roadmap alignment is Session 9 (metrics and dashboards), now that Session 8 escalation workflows are complete.
 
 ## Performance Metrics
 Managers and executives track CSR metrics:

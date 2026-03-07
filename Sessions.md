@@ -263,16 +263,37 @@ This checklist tracks the completion of each TreeCRM development session. Each s
 **Objective:** Implement case escalation workflow.
 
 ### Tasks
-- [ ] Enable CSR ? Manager/Executive endorsements
-- [ ] Highlight endorsed cases in yellow
-- [ ] Allow Manager/Executive to accept/reject endorsements
-- [ ] Enable Managers to reassign cases to other CSRs
-- [ ] Send notifications for endorsements and reassignments
+- [x] Enable CSR ? Manager/Executive endorsements
+- [x] Highlight endorsed cases in yellow
+- [x] Allow Manager/Executive to accept/reject endorsements
+- [x] Enable Managers to reassign cases to other CSRs
+- [x] Send notifications for endorsements and reassignments
 
 **Target Outcome:**
 - Endorsement workflow functional
 - Case reassignment works
 - Visual cues and notifications update in real-time
+
+**Summary (March 7, 2026):**
+- Added Session 8 backend workflow APIs:
+  - `GET /employee/cases/:caseId/workflow`
+  - `POST /employee/cases/:caseId/endorsements`
+  - `PATCH /employee/endorsements/:endorsementId`
+  - `PATCH /employee/cases/:caseId/reassign`
+- Implemented CSR endorsement flow to Manager/Executive users with duplicate-pending safeguards and system timeline messages.
+- Implemented Manager/Executive/Admin endorsement decisions (accept/reject) with role checks and decision notifications to affected users.
+- Implemented case reassignment to CSR users with optional reason, automatic pending-endorsement cancellation, and reassignment notifications.
+- Extended `/employee/tree` case payloads with pending-endorsement metadata so endorsed cases can be highlighted in the UI.
+- Updated employee workspace UI to:
+  - render endorsed cases in yellow in tree nodes and case details
+  - show escalation timeline/details in the case panel
+  - allow CSR endorsement actions
+  - allow Manager/Executive endorsement decisions
+  - allow case reassignment controls for Manager/Executive/Admin sessions
+- Added realtime-driven visual refresh on endorsement/reassignment notification events so case highlights and assignment state update without manual reload.
+- Validation completed:
+  - backend `npm run lint` + `npm run build`
+  - frontend `npm run lint` + `npm run build`
 
 ---
 
@@ -325,7 +346,4 @@ This checklist tracks the completion of each TreeCRM development session. Each s
 
 **Execution Reminder (MCP First):**
 - For Session 2 auth testing and user setup, use the Supabase MCP server first (create users, set role metadata, verify auth paths) before manual Dashboard workflows.
-
-
-
 

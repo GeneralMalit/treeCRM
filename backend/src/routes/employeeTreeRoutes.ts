@@ -2,10 +2,12 @@ import express from "express";
 import { isRole, type Role } from "../constants/roles";
 import { requireAuth } from "../middleware/requireAuth";
 import { requireRole } from "../middleware/requireRole";
+import { createNotification } from "../services/notificationService";
 import { hasSupabaseAdmin, supabaseAdmin } from "../services/supabaseClient";
 
 type CaseStatus = "Open" | "In Progress" | "Resolved" | "Dropped";
 type CasePriority = "High" | "Medium" | "Low";
+type EndorsementStatus = "Pending" | "Accepted" | "Rejected" | "Cancelled";
 
 type UserRow = {
   id: string;
@@ -54,8 +56,21 @@ type InternalNoteRow = {
   created_at: string;
 };
 
+type EndorsementRow = {
+  id: string;
+  case_id: string;
+  endorsed_by: string;
+  endorsed_to: string;
+  status: EndorsementStatus;
+  created_at: string;
+};
+
 const STATUS_VALUES = ["Open", "In Progress", "Resolved", "Dropped"] as const;
 const PRIORITY_VALUES = ["High", "Medium", "Low"] as const;
+const ENDORSEMENT_STATUS_VALUES = ["Pending", "Accepted", "Rejected", "Cancelled"] as const;
+const ENDORSEMENT_DECISION_VALUES = ["Accepted", "Rejected"] as const;
+const ENDORSEMENT_TARGET_ROLES: Role[] = ["Manager", "Executive"];
+const CASE_REASSIGN_ROLES: Role[] = ["Manager", "Executive", "Admin"];
 
 const VISIBLE_EMPLOYEE_ROLES: Record<"CSR" | "Manager" | "Executive" | "Admin", Role[]> = {
   CSR: ["CSR"],
@@ -78,6 +93,13 @@ function isCaseStatus(value: unknown): value is CaseStatus {
 
 function isCasePriority(value: unknown): value is CasePriority {
   return typeof value === "string" && PRIORITY_VALUES.includes(value as (typeof PRIORITY_VALUES)[number]);
+}
+
+function isEndorsementStatus(value: unknown): value is EndorsementStatus {
+  return (
+    typeof value === "string" &&
+    ENDORSEMENT_STATUS_VALUES.includes(value as (typeof ENDORSEMENT_STATUS_VALUES)[number])
+  );
 }
 
 function toUserRows(rows: unknown[]): UserRow[] {
@@ -200,6 +222,37 @@ function toInternalNoteRows(rows: unknown[]): InternalNoteRow[] {
     }));
 }
 
+function toEndorsementRows(rows: unknown[]): EndorsementRow[] {
+  return rows
+    .filter((row): row is Record<string, unknown> => isRecord(row))
+    .filter((row) => {
+      return (
+        typeof row.id === "string" &&
+        typeof row.case_id === "string" &&
+        typeof row.endorsed_by === "string" &&
+        typeof row.endorsed_to === "string" &&
+        typeof row.created_at === "string" &&
+        isEndorsementStatus(row.status)
+      );
+    })
+    .map((row) => ({
+      id: String(row.id),
+      case_id: String(row.case_id),
+      endorsed_by: String(row.endorsed_by),
+      endorsed_to: String(row.endorsed_to),
+      status: row.status as EndorsementStatus,
+      created_at: String(row.created_at),
+    }));
+}
+
+function getDisplayName(user: { name?: string | null; email: string }): string {
+  if (typeof user.name === "string" && user.name.trim()) {
+    return user.name.trim();
+  }
+
+  return user.email;
+}
+
 function getRoleSortWeight(role: Role): number {
   switch (role) {
     case "Executive":
@@ -319,6 +372,63 @@ function parseInternalNoteCreateBody(body: unknown): ValidationResult<{ messageT
   return { data: { messageText } };
 }
 
+function parseEndorseCaseBody(body: unknown): ValidationResult<{ endorsedToId: string }> {
+  if (!isRecord(body)) {
+    return { error: "Request body must be a JSON object." };
+  }
+
+  if (typeof body.endorsedToId !== "string" || !isUuid(body.endorsedToId)) {
+    return { error: "endorsedToId must be a valid UUID." };
+  }
+
+  return { data: { endorsedToId: body.endorsedToId } };
+}
+
+function parseEndorsementDecisionBody(
+  body: unknown,
+): ValidationResult<{ status: "Accepted" | "Rejected" }> {
+  if (!isRecord(body)) {
+    return { error: "Request body must be a JSON object." };
+  }
+
+  const status = readEnum(body.status, "status", ENDORSEMENT_DECISION_VALUES);
+  if ("error" in status) {
+    return status;
+  }
+
+  return { data: { status: status.data } };
+}
+
+function parseCaseReassignBody(body: unknown): ValidationResult<{ assigneeId: string; reason?: string }> {
+  if (!isRecord(body)) {
+    return { error: "Request body must be a JSON object." };
+  }
+
+  if (typeof body.assigneeId !== "string" || !isUuid(body.assigneeId)) {
+    return { error: "assigneeId must be a valid UUID." };
+  }
+
+  if (typeof body.reason === "undefined" || body.reason === null) {
+    return { data: { assigneeId: body.assigneeId } };
+  }
+
+  if (typeof body.reason !== "string") {
+    return { error: "reason must be a string when provided." };
+  }
+
+  const normalizedReason = body.reason.trim();
+  if (normalizedReason.length > 400) {
+    return { error: "reason must be at most 400 characters." };
+  }
+
+  return {
+    data: {
+      assigneeId: body.assigneeId,
+      ...(normalizedReason ? { reason: normalizedReason } : {}),
+    },
+  };
+}
+
 function parseCaseIdParam(rawValue: string | string[] | undefined): ValidationResult<string> {
   if (typeof rawValue !== "string") {
     return { error: "caseId must be a valid UUID." };
@@ -326,6 +436,18 @@ function parseCaseIdParam(rawValue: string | string[] | undefined): ValidationRe
 
   if (!isUuid(rawValue)) {
     return { error: "caseId must be a valid UUID." };
+  }
+
+  return { data: rawValue };
+}
+
+function parseEndorsementIdParam(rawValue: string | string[] | undefined): ValidationResult<string> {
+  if (typeof rawValue !== "string") {
+    return { error: "endorsementId must be a valid UUID." };
+  }
+
+  if (!isUuid(rawValue)) {
+    return { error: "endorsementId must be a valid UUID." };
   }
 
   return { data: rawValue };
@@ -361,7 +483,31 @@ async function fetchCase(caseId: string): Promise<ValidationResult<CaseRow | nul
   return { data: parsed };
 }
 
-function mapCase(caseItem: CaseRow) {
+function canAccessCase(viewer: { role: Role; sub: string }, caseItem: CaseRow): boolean {
+  if (viewer.role === "CSR") {
+    return caseItem.assigned_to === viewer.sub;
+  }
+
+  return true;
+}
+
+function toWorkflowUser(user: UserRow) {
+  return {
+    id: user.id,
+    name: user.name,
+    email: user.email,
+    role: user.role,
+  };
+}
+
+type PendingEndorsementSummary = {
+  hasPendingEndorsement: boolean;
+  pendingEndorsementCount: number;
+};
+
+function mapCase(caseItem: CaseRow, pendingSummary?: PendingEndorsementSummary) {
+  const summary = pendingSummary ?? { hasPendingEndorsement: false, pendingEndorsementCount: 0 };
+
   return {
     id: caseItem.id,
     customerId: caseItem.customer_id,
@@ -372,6 +518,52 @@ function mapCase(caseItem: CaseRow) {
     priority: caseItem.priority,
     createdAt: caseItem.created_at,
     updatedAt: caseItem.updated_at,
+    hasPendingEndorsement: summary.hasPendingEndorsement,
+    pendingEndorsementCount: summary.pendingEndorsementCount,
+  };
+}
+
+async function fetchUsersMapByIds(
+  client: NonNullable<typeof supabaseAdmin>,
+  userIds: string[],
+): Promise<ValidationResult<Map<string, UserRow>>> {
+  if (userIds.length === 0) {
+    return { data: new Map<string, UserRow>() };
+  }
+
+  const dedupedUserIds = Array.from(new Set(userIds));
+  const usersResult = await client
+    .from("users")
+    .select("id,email,name,role,created_at")
+    .in("id", dedupedUserIds);
+
+  if (usersResult.error) {
+    return { error: usersResult.error.message };
+  }
+
+  const users = toUserRows((usersResult.data ?? []) as unknown[]);
+  return { data: new Map(users.map((user) => [user.id, user])) };
+}
+
+function mapEndorsementForResponse(
+  endorsement: EndorsementRow,
+  usersById: Map<string, UserRow>,
+  viewerId: string,
+) {
+  const endorsedByUser = usersById.get(endorsement.endorsed_by);
+  const endorsedToUser = usersById.get(endorsement.endorsed_to);
+  if (!endorsedByUser || !endorsedToUser) {
+    return null;
+  }
+
+  return {
+    id: endorsement.id,
+    caseId: endorsement.case_id,
+    status: endorsement.status,
+    createdAt: endorsement.created_at,
+    endorsedBy: toWorkflowUser(endorsedByUser),
+    endorsedTo: toWorkflowUser(endorsedToUser),
+    isPendingForViewer: endorsement.status === "Pending" && endorsement.endorsed_to === viewerId,
   };
 }
 
@@ -448,6 +640,33 @@ router.get("/employee/tree", requireAuth, requireRole("CSR", "Manager", "Executi
 
     return typeof caseItem.assigned_to === "string" && userMap.has(caseItem.assigned_to);
   });
+
+  const caseIdsInScope = filteredCases.map((caseItem) => caseItem.id);
+  let pendingEndorsements: EndorsementRow[] = [];
+
+  if (caseIdsInScope.length > 0) {
+    const pendingEndorsementsResult = await client
+      .from("endorsements")
+      .select("id,case_id,endorsed_by,endorsed_to,status,created_at")
+      .eq("status", "Pending")
+      .in("case_id", caseIdsInScope);
+
+    if (pendingEndorsementsResult.error) {
+      res.status(500).json({
+        status: "error",
+        message: pendingEndorsementsResult.error.message,
+      });
+      return;
+    }
+
+    pendingEndorsements = toEndorsementRows((pendingEndorsementsResult.data ?? []) as unknown[]);
+  }
+
+  const pendingEndorsementCountByCaseId = new Map<string, number>();
+  for (const endorsement of pendingEndorsements) {
+    const current = pendingEndorsementCountByCaseId.get(endorsement.case_id) ?? 0;
+    pendingEndorsementCountByCaseId.set(endorsement.case_id, current + 1);
+  }
 
   const customersById = new Map<string, CustomerRow>(customers.map((customer) => [customer.id, customer]));
 
@@ -527,15 +746,12 @@ router.get("/employee/tree", requireAuth, requireRole("CSR", "Manager", "Executi
       .sort((a, b) => a.company.localeCompare(b.company))
       .map((customer) => ({
         ...customer,
-        cases: customer.cases.map((caseItem) => ({
-          id: caseItem.id,
-          title: caseItem.title,
-          description: caseItem.description,
-          status: caseItem.status,
-          priority: caseItem.priority,
-          createdAt: caseItem.created_at,
-          updatedAt: caseItem.updated_at,
-        })),
+        cases: customer.cases.map((caseItem) =>
+          mapCase(caseItem, {
+            hasPendingEndorsement: (pendingEndorsementCountByCaseId.get(caseItem.id) ?? 0) > 0,
+            pendingEndorsementCount: pendingEndorsementCountByCaseId.get(caseItem.id) ?? 0,
+          }),
+        ),
       }));
 
     return {
@@ -1033,5 +1249,731 @@ router.post("/employee/cases/:caseId/notes", requireAuth, requireRole("CSR"), as
     },
   });
 });
+
+router.get(
+  "/employee/cases/:caseId/workflow",
+  requireAuth,
+  requireRole("CSR", "Manager", "Executive", "Admin"),
+  async (req, res) => {
+    const client = ensureSupabase();
+    if (!client) {
+      res.status(500).json({
+        status: "error",
+        message: "SUPABASE_SERVICE_ROLE_KEY is required in backend/.env for employee workflow queries.",
+      });
+      return;
+    }
+
+    const viewer = req.user;
+    if (!viewer) {
+      res.status(401).json({
+        status: "error",
+        message: "Authentication is required.",
+      });
+      return;
+    }
+
+    const caseId = parseCaseIdParam(req.params.caseId);
+    if ("error" in caseId) {
+      res.status(400).json({
+        status: "error",
+        message: caseId.error,
+      });
+      return;
+    }
+
+    const caseResult = await fetchCase(caseId.data);
+    if ("error" in caseResult) {
+      res.status(500).json({
+        status: "error",
+        message: caseResult.error,
+      });
+      return;
+    }
+
+    if (!caseResult.data) {
+      res.status(404).json({
+        status: "error",
+        message: "Case not found.",
+      });
+      return;
+    }
+
+    if (!canAccessCase(viewer, caseResult.data)) {
+      res.status(403).json({
+        status: "error",
+        message: "You are not allowed to view workflow details for this case.",
+      });
+      return;
+    }
+
+    const endorsementsResult = await client
+      .from("endorsements")
+      .select("id,case_id,endorsed_by,endorsed_to,status,created_at")
+      .eq("case_id", caseId.data)
+      .order("created_at", { ascending: false });
+
+    if (endorsementsResult.error) {
+      res.status(500).json({
+        status: "error",
+        message: endorsementsResult.error.message,
+      });
+      return;
+    }
+
+    const endorsements = toEndorsementRows((endorsementsResult.data ?? []) as unknown[]);
+
+    const workflowUserIds = endorsements.flatMap((endorsement) => [
+      endorsement.endorsed_by,
+      endorsement.endorsed_to,
+    ]);
+    if (caseResult.data.assigned_to) {
+      workflowUserIds.push(caseResult.data.assigned_to);
+    }
+
+    const usersResult = await fetchUsersMapByIds(client, workflowUserIds);
+    if ("error" in usersResult) {
+      res.status(500).json({
+        status: "error",
+        message: usersResult.error,
+      });
+      return;
+    }
+
+    const usersById = usersResult.data;
+    const mappedEndorsements = endorsements
+      .map((endorsement) => mapEndorsementForResponse(endorsement, usersById, viewer.sub))
+      .filter((endorsement): endorsement is NonNullable<typeof endorsement> => endorsement !== null);
+
+    let endorsementTargets: ReturnType<typeof toWorkflowUser>[] = [];
+    if (viewer.role === "CSR") {
+      const targetUsersResult = await client
+        .from("users")
+        .select("id,email,name,role,created_at")
+        .in("role", ENDORSEMENT_TARGET_ROLES)
+        .order("role", { ascending: true })
+        .order("name", { ascending: true });
+
+      if (targetUsersResult.error) {
+        res.status(500).json({
+          status: "error",
+          message: targetUsersResult.error.message,
+        });
+        return;
+      }
+
+      endorsementTargets = toUserRows((targetUsersResult.data ?? []) as unknown[]).map(toWorkflowUser);
+    }
+
+    let reassignmentCandidates: ReturnType<typeof toWorkflowUser>[] = [];
+    if (CASE_REASSIGN_ROLES.includes(viewer.role)) {
+      const candidateResult = await client
+        .from("users")
+        .select("id,email,name,role,created_at")
+        .eq("role", "CSR")
+        .order("name", { ascending: true });
+
+      if (candidateResult.error) {
+        res.status(500).json({
+          status: "error",
+          message: candidateResult.error.message,
+        });
+        return;
+      }
+
+      reassignmentCandidates = toUserRows((candidateResult.data ?? []) as unknown[]).map(toWorkflowUser);
+    }
+
+    const pendingEndorsementCount = endorsements.filter((endorsement) => endorsement.status === "Pending").length;
+    const assignedTo = caseResult.data.assigned_to ? usersById.get(caseResult.data.assigned_to) ?? null : null;
+
+    res.json({
+      status: "ok",
+      data: {
+        case: {
+          ...mapCase(caseResult.data, {
+            hasPendingEndorsement: pendingEndorsementCount > 0,
+            pendingEndorsementCount,
+          }),
+          assignedToUser: assignedTo ? toWorkflowUser(assignedTo) : null,
+        },
+        endorsements: mappedEndorsements,
+        endorsementTargets,
+        reassignmentCandidates,
+      },
+    });
+  },
+);
+
+router.post("/employee/cases/:caseId/endorsements", requireAuth, requireRole("CSR"), async (req, res) => {
+  const client = ensureSupabase();
+  if (!client) {
+    res.status(500).json({
+      status: "error",
+      message: "SUPABASE_SERVICE_ROLE_KEY is required in backend/.env for employee workflow queries.",
+    });
+    return;
+  }
+
+  const viewer = req.user;
+  if (!viewer) {
+    res.status(401).json({
+      status: "error",
+      message: "Authentication is required.",
+    });
+    return;
+  }
+
+  const caseId = parseCaseIdParam(req.params.caseId);
+  if ("error" in caseId) {
+    res.status(400).json({
+      status: "error",
+      message: caseId.error,
+    });
+    return;
+  }
+
+  const parsedBody = parseEndorseCaseBody(req.body);
+  if ("error" in parsedBody) {
+    res.status(400).json({
+      status: "error",
+      message: parsedBody.error,
+    });
+    return;
+  }
+
+  const caseResult = await fetchCase(caseId.data);
+  if ("error" in caseResult) {
+    res.status(500).json({
+      status: "error",
+      message: caseResult.error,
+    });
+    return;
+  }
+
+  if (!caseResult.data) {
+    res.status(404).json({
+      status: "error",
+      message: "Case not found.",
+    });
+    return;
+  }
+
+  if (caseResult.data.assigned_to !== viewer.sub) {
+    res.status(403).json({
+      status: "error",
+      message: "You can only endorse cases assigned to your account.",
+    });
+    return;
+  }
+
+  const endorsedToUserResult = await client
+    .from("users")
+    .select("id,email,name,role,created_at")
+    .eq("id", parsedBody.data.endorsedToId)
+    .maybeSingle();
+
+  if (endorsedToUserResult.error) {
+    res.status(500).json({
+      status: "error",
+      message: endorsedToUserResult.error.message,
+    });
+    return;
+  }
+
+  const endorsedToUser = endorsedToUserResult.data
+    ? toUserRows([endorsedToUserResult.data as unknown])[0]
+    : null;
+
+  if (!endorsedToUser || !ENDORSEMENT_TARGET_ROLES.includes(endorsedToUser.role)) {
+    res.status(400).json({
+      status: "error",
+      message: "endorsedToId must reference a Manager or Executive account.",
+    });
+    return;
+  }
+
+  const existingPendingResult = await client
+    .from("endorsements")
+    .select("id")
+    .eq("case_id", caseResult.data.id)
+    .eq("status", "Pending")
+    .limit(1);
+
+  if (existingPendingResult.error) {
+    res.status(500).json({
+      status: "error",
+      message: existingPendingResult.error.message,
+    });
+    return;
+  }
+
+  if ((existingPendingResult.data ?? []).length > 0) {
+    res.status(409).json({
+      status: "error",
+      message: "This case already has a pending endorsement.",
+    });
+    return;
+  }
+
+  const insertResult = await client
+    .from("endorsements")
+    .insert({
+      case_id: caseResult.data.id,
+      endorsed_by: viewer.sub,
+      endorsed_to: endorsedToUser.id,
+      status: "Pending",
+    })
+    .select("id,case_id,endorsed_by,endorsed_to,status,created_at")
+    .single();
+
+  if (insertResult.error) {
+    res.status(400).json({
+      status: "error",
+      message: insertResult.error.message,
+    });
+    return;
+  }
+
+  const endorsement = toEndorsementRows([insertResult.data as unknown])[0];
+  if (!endorsement) {
+    res.status(500).json({
+      status: "error",
+      message: "Failed to parse created endorsement payload.",
+    });
+    return;
+  }
+
+  const viewerDisplayName = getDisplayName({ name: viewer.name, email: viewer.email });
+  const endorsedToName = getDisplayName({ name: endorsedToUser.name, email: endorsedToUser.email });
+
+  await client.from("messages").insert({
+    case_id: caseResult.data.id,
+    sender_id: viewer.sub,
+    sender_role: "CSR",
+    message_type: "system",
+    message_text: `Case endorsed to ${endorsedToName} (${endorsedToUser.role}).`,
+  });
+
+  await createNotification({
+    userId: endorsedToUser.id,
+    type: "case_endorsement",
+    message: `${viewerDisplayName} endorsed "${caseResult.data.title}" to you.`,
+  });
+
+  res.status(201).json({
+    status: "ok",
+    data: {
+      endorsement: {
+        id: endorsement.id,
+        caseId: endorsement.case_id,
+        status: endorsement.status,
+        createdAt: endorsement.created_at,
+        endorsedBy: {
+          id: viewer.sub,
+          name: viewer.name ?? null,
+          email: viewer.email,
+          role: viewer.role,
+        },
+        endorsedTo: toWorkflowUser(endorsedToUser),
+        isPendingForViewer: false,
+      },
+    },
+  });
+});
+
+router.patch(
+  "/employee/endorsements/:endorsementId",
+  requireAuth,
+  requireRole("Manager", "Executive", "Admin"),
+  async (req, res) => {
+    const client = ensureSupabase();
+    if (!client) {
+      res.status(500).json({
+        status: "error",
+        message: "SUPABASE_SERVICE_ROLE_KEY is required in backend/.env for employee workflow queries.",
+      });
+      return;
+    }
+
+    const viewer = req.user;
+    if (!viewer) {
+      res.status(401).json({
+        status: "error",
+        message: "Authentication is required.",
+      });
+      return;
+    }
+
+    const endorsementId = parseEndorsementIdParam(req.params.endorsementId);
+    if ("error" in endorsementId) {
+      res.status(400).json({
+        status: "error",
+        message: endorsementId.error,
+      });
+      return;
+    }
+
+    const parsedBody = parseEndorsementDecisionBody(req.body);
+    if ("error" in parsedBody) {
+      res.status(400).json({
+        status: "error",
+        message: parsedBody.error,
+      });
+      return;
+    }
+
+    const endorsementResult = await client
+      .from("endorsements")
+      .select("id,case_id,endorsed_by,endorsed_to,status,created_at")
+      .eq("id", endorsementId.data)
+      .maybeSingle();
+
+    if (endorsementResult.error) {
+      res.status(500).json({
+        status: "error",
+        message: endorsementResult.error.message,
+      });
+      return;
+    }
+
+    const endorsement = endorsementResult.data ? toEndorsementRows([endorsementResult.data as unknown])[0] : null;
+    if (!endorsement) {
+      res.status(404).json({
+        status: "error",
+        message: "Endorsement not found.",
+      });
+      return;
+    }
+
+    if (endorsement.status !== "Pending") {
+      res.status(409).json({
+        status: "error",
+        message: "Only pending endorsements can be accepted or rejected.",
+      });
+      return;
+    }
+
+    if (viewer.role !== "Admin" && endorsement.endorsed_to !== viewer.sub) {
+      res.status(403).json({
+        status: "error",
+        message: "You can only act on endorsements assigned to your account.",
+      });
+      return;
+    }
+
+    const caseResult = await fetchCase(endorsement.case_id);
+    if ("error" in caseResult) {
+      res.status(500).json({
+        status: "error",
+        message: caseResult.error,
+      });
+      return;
+    }
+
+    if (!caseResult.data) {
+      res.status(404).json({
+        status: "error",
+        message: "Case for this endorsement no longer exists.",
+      });
+      return;
+    }
+
+    const updateResult = await client
+      .from("endorsements")
+      .update({ status: parsedBody.data.status })
+      .eq("id", endorsement.id)
+      .eq("status", "Pending")
+      .select("id,case_id,endorsed_by,endorsed_to,status,created_at")
+      .maybeSingle();
+
+    if (updateResult.error) {
+      res.status(400).json({
+        status: "error",
+        message: updateResult.error.message,
+      });
+      return;
+    }
+
+    const updatedEndorsement = updateResult.data ? toEndorsementRows([updateResult.data as unknown])[0] : null;
+    if (!updatedEndorsement) {
+      res.status(409).json({
+        status: "error",
+        message: "Endorsement is no longer pending.",
+      });
+      return;
+    }
+
+    const usersResult = await fetchUsersMapByIds(client, [
+      updatedEndorsement.endorsed_by,
+      updatedEndorsement.endorsed_to,
+      ...(caseResult.data.assigned_to ? [caseResult.data.assigned_to] : []),
+    ]);
+
+    if ("error" in usersResult) {
+      res.status(500).json({
+        status: "error",
+        message: usersResult.error,
+      });
+      return;
+    }
+
+    const usersById = usersResult.data;
+    const viewerDisplayName = getDisplayName({ name: viewer.name, email: viewer.email });
+
+    await client.from("messages").insert({
+      case_id: caseResult.data.id,
+      sender_id: viewer.sub,
+      sender_role: viewer.role,
+      message_type: "system",
+      message_text: `Endorsement ${parsedBody.data.status.toLowerCase()} by ${viewerDisplayName}.`,
+    });
+
+    if (updatedEndorsement.endorsed_by !== viewer.sub) {
+      await createNotification({
+        userId: updatedEndorsement.endorsed_by,
+        type: "case_endorsement_decision",
+        message: `Your endorsement on "${caseResult.data.title}" was ${parsedBody.data.status.toLowerCase()} by ${viewerDisplayName}.`,
+      });
+    }
+
+    if (
+      caseResult.data.assigned_to &&
+      caseResult.data.assigned_to !== viewer.sub &&
+      caseResult.data.assigned_to !== updatedEndorsement.endorsed_by
+    ) {
+      await createNotification({
+        userId: caseResult.data.assigned_to,
+        type: "case_endorsement_decision",
+        message: `An endorsement on "${caseResult.data.title}" was ${parsedBody.data.status.toLowerCase()}.`,
+      });
+    }
+
+    const mapped = mapEndorsementForResponse(updatedEndorsement, usersById, viewer.sub);
+    if (!mapped) {
+      res.status(500).json({
+        status: "error",
+        message: "Failed to build endorsement response payload.",
+      });
+      return;
+    }
+
+    res.json({
+      status: "ok",
+      data: {
+        endorsement: mapped,
+      },
+    });
+  },
+);
+
+router.patch(
+  "/employee/cases/:caseId/reassign",
+  requireAuth,
+  requireRole("Manager", "Executive", "Admin"),
+  async (req, res) => {
+    const client = ensureSupabase();
+    if (!client) {
+      res.status(500).json({
+        status: "error",
+        message: "SUPABASE_SERVICE_ROLE_KEY is required in backend/.env for employee workflow queries.",
+      });
+      return;
+    }
+
+    const viewer = req.user;
+    if (!viewer) {
+      res.status(401).json({
+        status: "error",
+        message: "Authentication is required.",
+      });
+      return;
+    }
+
+    const caseId = parseCaseIdParam(req.params.caseId);
+    if ("error" in caseId) {
+      res.status(400).json({
+        status: "error",
+        message: caseId.error,
+      });
+      return;
+    }
+
+    const parsedBody = parseCaseReassignBody(req.body);
+    if ("error" in parsedBody) {
+      res.status(400).json({
+        status: "error",
+        message: parsedBody.error,
+      });
+      return;
+    }
+
+    if (!CASE_REASSIGN_ROLES.includes(viewer.role)) {
+      res.status(403).json({
+        status: "error",
+        message: "Your role is not allowed to reassign cases.",
+      });
+      return;
+    }
+
+    const caseResult = await fetchCase(caseId.data);
+    if ("error" in caseResult) {
+      res.status(500).json({
+        status: "error",
+        message: caseResult.error,
+      });
+      return;
+    }
+
+    if (!caseResult.data) {
+      res.status(404).json({
+        status: "error",
+        message: "Case not found.",
+      });
+      return;
+    }
+
+    const previousAssigneeId = caseResult.data.assigned_to;
+    if (!previousAssigneeId) {
+      res.status(400).json({
+        status: "error",
+        message: "Case is not currently assigned to any CSR.",
+      });
+      return;
+    }
+
+    if (previousAssigneeId === parsedBody.data.assigneeId) {
+      res.status(400).json({
+        status: "error",
+        message: "assigneeId must be different from the current assignee.",
+      });
+      return;
+    }
+
+    const usersResult = await fetchUsersMapByIds(client, [previousAssigneeId, parsedBody.data.assigneeId]);
+    if ("error" in usersResult) {
+      res.status(500).json({
+        status: "error",
+        message: usersResult.error,
+      });
+      return;
+    }
+
+    const usersById = usersResult.data;
+    const previousAssignee = usersById.get(previousAssigneeId) ?? null;
+    const nextAssignee = usersById.get(parsedBody.data.assigneeId) ?? null;
+
+    if (!nextAssignee || nextAssignee.role !== "CSR") {
+      res.status(400).json({
+        status: "error",
+        message: "assigneeId must reference a CSR account.",
+      });
+      return;
+    }
+
+    const updateCaseResult = await client
+      .from("cases")
+      .update({ assigned_to: nextAssignee.id })
+      .eq("id", caseResult.data.id)
+      .select("id,customer_id,assigned_to,title,description,status,priority,created_at,updated_at")
+      .maybeSingle();
+
+    if (updateCaseResult.error) {
+      res.status(400).json({
+        status: "error",
+        message: updateCaseResult.error.message,
+      });
+      return;
+    }
+
+    const updatedCase = updateCaseResult.data ? toCaseRows([updateCaseResult.data as unknown])[0] : null;
+    if (!updatedCase) {
+      res.status(500).json({
+        status: "error",
+        message: "Failed to parse reassigned case payload.",
+      });
+      return;
+    }
+
+    const cancelledEndorsementsResult = await client
+      .from("endorsements")
+      .update({ status: "Cancelled" })
+      .eq("case_id", updatedCase.id)
+      .eq("status", "Pending")
+      .select("id,case_id,endorsed_by,endorsed_to,status,created_at");
+
+    if (cancelledEndorsementsResult.error) {
+      res.status(400).json({
+        status: "error",
+        message: cancelledEndorsementsResult.error.message,
+      });
+      return;
+    }
+
+    const cancelledEndorsements = toEndorsementRows((cancelledEndorsementsResult.data ?? []) as unknown[]);
+    const actorName = getDisplayName({ name: viewer.name, email: viewer.email });
+    const previousAssigneeName = previousAssignee
+      ? getDisplayName({ name: previousAssignee.name, email: previousAssignee.email })
+      : "Unassigned";
+    const nextAssigneeName = getDisplayName({ name: nextAssignee.name, email: nextAssignee.email });
+
+    const reasonSuffix = parsedBody.data.reason ? ` Reason: ${parsedBody.data.reason}` : "";
+
+    await client.from("messages").insert({
+      case_id: updatedCase.id,
+      sender_id: viewer.sub,
+      sender_role: viewer.role,
+      message_type: "system",
+      message_text: `Case reassigned from ${previousAssigneeName} to ${nextAssigneeName} by ${actorName}.${reasonSuffix}`,
+    });
+
+    if (previousAssigneeId !== viewer.sub) {
+      await createNotification({
+        userId: previousAssigneeId,
+        type: "case_reassignment",
+        message: `"${updatedCase.title}" was reassigned from you to ${nextAssigneeName} by ${actorName}.`,
+      });
+    }
+
+    if (nextAssignee.id !== viewer.sub) {
+      await createNotification({
+        userId: nextAssignee.id,
+        type: "case_reassignment",
+        message: `"${updatedCase.title}" was reassigned to you by ${actorName}.`,
+      });
+    }
+
+    const cancelledRecipientIds = Array.from(
+      new Set(
+        cancelledEndorsements
+          .flatMap((endorsement) => [endorsement.endorsed_by, endorsement.endorsed_to])
+          .filter((userId) => userId !== viewer.sub),
+      ),
+    );
+
+    await Promise.all(
+      cancelledRecipientIds.map((userId) =>
+        createNotification({
+          userId,
+          type: "case_endorsement_cancelled",
+          message: `Pending endorsements for "${updatedCase.title}" were cancelled after reassignment.`,
+        }),
+      ),
+    );
+
+    res.json({
+      status: "ok",
+      data: {
+        case: {
+          ...mapCase(updatedCase),
+          assignedToUser: toWorkflowUser(nextAssignee),
+        },
+        previousAssignee: previousAssignee ? toWorkflowUser(previousAssignee) : null,
+        newAssignee: toWorkflowUser(nextAssignee),
+        cancelledEndorsementCount: cancelledEndorsements.length,
+      },
+    });
+  },
+);
 
 export const employeeTreeRouter = router;

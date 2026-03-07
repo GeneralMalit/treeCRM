@@ -31,6 +31,16 @@ import {
   type InternalNote,
 } from "@/lib/caseManagement";
 import {
+  decideCaseEndorsement,
+  endorseCaseToEmployee,
+  fetchCaseWorkflowDetails,
+  reassignCase,
+  type CaseWorkflowDetails,
+  type CaseWorkflowEndorsement,
+  type EndorsementDecision,
+  type EndorsementStatus,
+} from "@/lib/caseWorkflow";
+import {
   clearStoredAccessToken,
   getLandingRoute,
   getStoredAccessToken,
@@ -147,6 +157,23 @@ function upsertInternalMessage(
   });
 }
 
+function upsertWorkflowEndorsement(
+  endorsements: CaseWorkflowEndorsement[],
+  nextEndorsement: CaseWorkflowEndorsement,
+): CaseWorkflowEndorsement[] {
+  const byId = new Map(endorsements.map((endorsement) => [endorsement.id, endorsement]));
+  byId.set(nextEndorsement.id, nextEndorsement);
+
+  return [...byId.values()].sort((a, b) => {
+    const byDate = new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+    if (byDate !== 0) {
+      return byDate;
+    }
+
+    return b.id.localeCompare(a.id);
+  });
+}
+
 const priorityStyleMap: Record<
   EmployeeTreeCase["priority"],
   { border: string; background: string; chipColor: "error" | "warning" | "info" }
@@ -168,6 +195,12 @@ const priorityStyleMap: Record<
   },
 };
 
+const endorsedCaseStyle = {
+  border: "#CA8A04",
+  background: "#FEF9C3",
+  chipColor: "warning" as const,
+};
+
 const CASE_STATUSES: CaseStatus[] = ["Open", "In Progress", "Resolved", "Dropped"];
 const CASE_PRIORITIES: CasePriority[] = ["High", "Medium", "Low"];
 const PRIORITY_RING_LAYOUT: Array<{ priority: CasePriority; label: string; width: string }> = [
@@ -175,6 +208,18 @@ const PRIORITY_RING_LAYOUT: Array<{ priority: CasePriority; label: string; width
   { priority: "Medium", label: "Medium Priority (Middle Arc)", width: "78%" },
   { priority: "Low", label: "Low Priority (Outer Arc)", width: "96%" },
 ];
+
+function getCaseVisualStyle(caseItem: EmployeeTreeCase) {
+  if (caseItem.hasPendingEndorsement) {
+    return endorsedCaseStyle;
+  }
+
+  return priorityStyleMap[caseItem.priority];
+}
+
+function formatUserDisplayName(user: { name?: string | null; email: string; role: Role }): string {
+  return `${user.name?.trim() || user.email} (${user.role})`;
+}
 
 function safeFormatDate(value: string): string {
   const parsed = new Date(value);
@@ -186,6 +231,23 @@ function safeFormatDate(value: string): string {
     dateStyle: "medium",
     timeStyle: "short",
   }).format(parsed);
+}
+
+function getEndorsementStatusChipColor(
+  status: EndorsementStatus,
+): "warning" | "success" | "error" | "default" {
+  switch (status) {
+    case "Pending":
+      return "warning";
+    case "Accepted":
+      return "success";
+    case "Rejected":
+      return "error";
+    case "Cancelled":
+      return "default";
+    default:
+      return "default";
+  }
 }
 
 function buildDefaultExpandedTree(employeeNodes: EmployeeTreeEmployee[]): Record<string, boolean> {
@@ -298,10 +360,28 @@ export function EmployeeTreeWorkspace({ allowedRoles, title, description }: Empl
   const [sendingInternalChat, setSendingInternalChat] = useState(false);
   const [internalChatFeedback, setInternalChatFeedback] = useState<ActionFeedback | null>(null);
   const [notificationFeed, setNotificationFeed] = useState<NotificationSocketEvent[]>([]);
+  const [workflowCaseId, setWorkflowCaseId] = useState<string | null>(null);
+  const [workflowLoading, setWorkflowLoading] = useState(false);
+  const [workflowError, setWorkflowError] = useState<string | null>(null);
+  const [workflowDetails, setWorkflowDetails] = useState<CaseWorkflowDetails | null>(null);
+  const [selectedEndorseTargetId, setSelectedEndorseTargetId] = useState("");
+  const [sendingEndorsement, setSendingEndorsement] = useState(false);
+  const [decidingEndorsementId, setDecidingEndorsementId] = useState<string | null>(null);
+  const [endorsementFeedback, setEndorsementFeedback] = useState<ActionFeedback | null>(null);
+  const [reassignTargetId, setReassignTargetId] = useState("");
+  const [reassignReasonDraft, setReassignReasonDraft] = useState("");
+  const [reassigningCase, setReassigningCase] = useState(false);
+  const [reassignFeedback, setReassignFeedback] = useState<ActionFeedback | null>(null);
   const socketRef = useRef<RealtimeSocket | null>(null);
+  const currentUserRef = useRef<ReadyState["user"] | null>(null);
 
   const selectedCaseId = selectedNode?.kind === "case" ? selectedNode.caseItem.id : null;
-  const isCsrSession = state.status === "ready" && state.data.user.role === "CSR";
+  const sessionRole = state.status === "ready" ? state.data.user.role : null;
+  const isCsrSession = sessionRole === "CSR";
+  const canReviewEndorsements =
+    sessionRole === "Manager" || sessionRole === "Executive" || sessionRole === "Admin";
+  const canReassignCases =
+    sessionRole === "Manager" || sessionRole === "Executive" || sessionRole === "Admin";
   const isEmployeeSession = state.status === "ready" && state.data.user.role !== "Customer";
   const viewerId = state.status === "ready" ? state.data.tree.scope.viewerId : null;
   const viewerDisplayName =
@@ -341,6 +421,36 @@ export function EmployeeTreeWorkspace({ allowedRoles, title, description }: Empl
     },
     [],
   );
+
+  const refreshCaseWorkflow = useCallback(async (accessToken: string, caseId: string) => {
+    const details = await fetchCaseWorkflowDetails(accessToken, caseId);
+    setWorkflowCaseId(caseId);
+    setWorkflowDetails(details);
+    setSelectedEndorseTargetId((current) => {
+      if (current && details.endorsementTargets.some((target) => target.id === current)) {
+        return current;
+      }
+
+      return details.endorsementTargets[0]?.id ?? "";
+    });
+    setReassignTargetId((current) => {
+      const availableCandidates = details.reassignmentCandidates.filter(
+        (candidate) => candidate.id !== details.case.assignedTo,
+      );
+
+      if (current && availableCandidates.some((candidate) => candidate.id === current)) {
+        return current;
+      }
+
+      return availableCandidates[0]?.id ?? "";
+    });
+
+    return details;
+  }, []);
+
+  useEffect(() => {
+    currentUserRef.current = state.status === "ready" ? state.data.user : null;
+  }, [state]);
 
   useEffect(() => {
     let cancelled = false;
@@ -455,6 +565,78 @@ export function EmployeeTreeWorkspace({ allowedRoles, title, description }: Empl
       cancelled = true;
     };
   }, [isCsrSession, selectedCaseId, router]);
+
+  useEffect(() => {
+    if (!isEmployeeSession || !selectedCaseId) {
+      setWorkflowCaseId(null);
+      setWorkflowLoading(false);
+      setWorkflowError(null);
+      setWorkflowDetails(null);
+      setSelectedEndorseTargetId("");
+      setEndorsementFeedback(null);
+      setDecidingEndorsementId(null);
+      setReassignTargetId("");
+      setReassignReasonDraft("");
+      setReassignFeedback(null);
+      return;
+    }
+
+    const accessToken = getStoredAccessToken();
+    if (!accessToken) {
+      router.replace("/login");
+      return;
+    }
+
+    let cancelled = false;
+    setWorkflowCaseId(selectedCaseId);
+    setWorkflowLoading(true);
+    setWorkflowError(null);
+    setEndorsementFeedback(null);
+    setReassignFeedback(null);
+
+    fetchCaseWorkflowDetails(accessToken, selectedCaseId)
+      .then((details) => {
+        if (cancelled) {
+          return;
+        }
+
+        setWorkflowDetails(details);
+        setSelectedEndorseTargetId((current) => {
+          if (current && details.endorsementTargets.some((target) => target.id === current)) {
+            return current;
+          }
+
+          return details.endorsementTargets[0]?.id ?? "";
+        });
+        setReassignTargetId((current) => {
+          const availableCandidates = details.reassignmentCandidates.filter(
+            (candidate) => candidate.id !== details.case.assignedTo,
+          );
+
+          if (current && availableCandidates.some((candidate) => candidate.id === current)) {
+            return current;
+          }
+
+          return availableCandidates[0]?.id ?? "";
+        });
+      })
+      .catch((error) => {
+        if (cancelled) {
+          return;
+        }
+
+        setWorkflowError(error instanceof Error ? error.message : "Failed to load case workflow details.");
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setWorkflowLoading(false);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [isEmployeeSession, router, selectedCaseId]);
 
   useEffect(() => {
     if (!isCsrSession || !selectedCaseId) {
@@ -676,6 +858,35 @@ export function EmployeeTreeWorkspace({ allowedRoles, title, description }: Empl
 
     const handleNotification = (payload: NotificationSocketEvent) => {
       setNotificationFeed((current) => [payload, ...current].slice(0, 6));
+
+      if (
+        payload.type !== "case_endorsement" &&
+        payload.type !== "case_endorsement_decision" &&
+        payload.type !== "case_endorsement_cancelled" &&
+        payload.type !== "case_reassignment"
+      ) {
+        return;
+      }
+
+      const accessToken = getStoredAccessToken();
+      const currentUser = currentUserRef.current;
+      if (!accessToken || !currentUser) {
+        return;
+      }
+
+      void refreshTreeForCurrentUser(accessToken, currentUser, selectedCaseId ?? undefined).catch(() => undefined);
+
+      if (selectedCaseId) {
+        void refreshCaseWorkflow(accessToken, selectedCaseId)
+          .then(() => {
+            setWorkflowError(null);
+          })
+          .catch((error) => {
+            setWorkflowError(
+              error instanceof Error ? error.message : "Failed to refresh case workflow details.",
+            );
+          });
+      }
     };
 
     socket.on("connect", handleConnect);
@@ -700,6 +911,8 @@ export function EmployeeTreeWorkspace({ allowedRoles, title, description }: Empl
     selectedInternalChatContactId,
     viewerDisplayName,
     viewerId,
+    refreshCaseWorkflow,
+    refreshTreeForCurrentUser,
   ]);
 
   useEffect(() => {
@@ -853,6 +1066,139 @@ export function EmployeeTreeWorkspace({ allowedRoles, title, description }: Empl
     }
   };
 
+  const handleCreateEndorsement = async () => {
+    if (state.status !== "ready" || state.data.user.role !== "CSR" || !selectedCaseId) {
+      return;
+    }
+
+    if (!selectedEndorseTargetId) {
+      setEndorsementFeedback({ type: "error", message: "Select a manager or executive to endorse this case." });
+      return;
+    }
+
+    const accessToken = getStoredAccessToken();
+    if (!accessToken) {
+      router.replace("/login");
+      return;
+    }
+
+    setSendingEndorsement(true);
+    setEndorsementFeedback(null);
+    try {
+      const endorsement = await endorseCaseToEmployee(accessToken, selectedCaseId, selectedEndorseTargetId);
+
+      setWorkflowDetails((current) => {
+        if (!current) {
+          return current;
+        }
+
+        return {
+          ...current,
+          case: {
+            ...current.case,
+            hasPendingEndorsement: true,
+            pendingEndorsementCount: current.case.pendingEndorsementCount + 1,
+          },
+          endorsements: upsertWorkflowEndorsement(current.endorsements, endorsement),
+        };
+      });
+
+      await refreshTreeForCurrentUser(accessToken, state.data.user, selectedCaseId);
+      await refreshCaseWorkflow(accessToken, selectedCaseId);
+      setEndorsementFeedback({ type: "success", message: "Case endorsed successfully." });
+    } catch (error) {
+      setEndorsementFeedback({
+        type: "error",
+        message: error instanceof Error ? error.message : "Failed to endorse case.",
+      });
+    } finally {
+      setSendingEndorsement(false);
+    }
+  };
+
+  const handleDecideEndorsement = async (endorsementId: string, decision: EndorsementDecision) => {
+    if (state.status !== "ready" || !selectedCaseId) {
+      return;
+    }
+
+    const accessToken = getStoredAccessToken();
+    if (!accessToken) {
+      router.replace("/login");
+      return;
+    }
+
+    setDecidingEndorsementId(endorsementId);
+    setEndorsementFeedback(null);
+    try {
+      const updatedEndorsement = await decideCaseEndorsement(accessToken, endorsementId, decision);
+
+      setWorkflowDetails((current) => {
+        if (!current) {
+          return current;
+        }
+
+        return {
+          ...current,
+          endorsements: upsertWorkflowEndorsement(current.endorsements, updatedEndorsement),
+        };
+      });
+
+      await refreshCaseWorkflow(accessToken, selectedCaseId);
+      await refreshTreeForCurrentUser(accessToken, state.data.user, selectedCaseId);
+      setEndorsementFeedback({
+        type: "success",
+        message: `Endorsement ${decision.toLowerCase()} successfully.`,
+      });
+    } catch (error) {
+      setEndorsementFeedback({
+        type: "error",
+        message: error instanceof Error ? error.message : "Failed to update endorsement.",
+      });
+    } finally {
+      setDecidingEndorsementId(null);
+    }
+  };
+
+  const handleReassignCase = async () => {
+    if (state.status !== "ready" || !canReassignCases || !selectedCaseId) {
+      return;
+    }
+
+    if (!reassignTargetId) {
+      setReassignFeedback({ type: "error", message: "Select a CSR to receive this case." });
+      return;
+    }
+
+    const accessToken = getStoredAccessToken();
+    if (!accessToken) {
+      router.replace("/login");
+      return;
+    }
+
+    setReassigningCase(true);
+    setReassignFeedback(null);
+    try {
+      await reassignCase(
+        accessToken,
+        selectedCaseId,
+        reassignTargetId,
+        reassignReasonDraft.trim() || undefined,
+      );
+
+      await refreshTreeForCurrentUser(accessToken, state.data.user, selectedCaseId);
+      await refreshCaseWorkflow(accessToken, selectedCaseId);
+      setReassignReasonDraft("");
+      setReassignFeedback({ type: "success", message: "Case reassigned successfully." });
+    } catch (error) {
+      setReassignFeedback({
+        type: "error",
+        message: error instanceof Error ? error.message : "Failed to reassign case.",
+      });
+    } finally {
+      setReassigningCase(false);
+    }
+  };
+
   const handleSendCaseChatMessage = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
 
@@ -996,9 +1342,19 @@ export function EmployeeTreeWorkspace({ allowedRoles, title, description }: Empl
       );
     }
 
-    const caseStyle = priorityStyleMap[selectedNode.caseItem.priority];
+    const caseStyle = getCaseVisualStyle(selectedNode.caseItem);
     const selectedTags = caseTags.filter((tag) => selectedTagIds.includes(tag.id));
     const isSelectedCaseMetaCurrent = caseMetaCaseId === selectedNode.caseItem.id;
+    const isSelectedWorkflowCurrent = workflowCaseId === selectedNode.caseItem.id;
+    const workflowEndorsements = workflowDetails?.endorsements ?? [];
+    const pendingEndorsementsForViewer = workflowEndorsements.filter((endorsement) => endorsement.isPendingForViewer);
+    const canEndorseCase =
+      isCsrSession &&
+      isSelectedWorkflowCurrent &&
+      workflowDetails?.case.hasPendingEndorsement === false;
+    const reassignCandidates = (workflowDetails?.reassignmentCandidates ?? []).filter(
+      (candidate) => candidate.id !== workflowDetails?.case.assignedTo,
+    );
 
     return (
       <Stack spacing={1.5}>
@@ -1012,6 +1368,14 @@ export function EmployeeTreeWorkspace({ allowedRoles, title, description }: Empl
             label={`Priority: ${selectedNode.caseItem.priority}`}
             variant="filled"
           />
+          {selectedNode.caseItem.hasPendingEndorsement && (
+            <Chip
+              size="small"
+              color="warning"
+              variant="filled"
+              label={`Endorsed (${selectedNode.caseItem.pendingEndorsementCount})`}
+            />
+          )}
         </Stack>
         <Typography>Employee: {selectedNode.employee.name ?? selectedNode.employee.email}</Typography>
         <Typography>Customer: {selectedNode.customer.company}</Typography>
@@ -1034,6 +1398,215 @@ export function EmployeeTreeWorkspace({ allowedRoles, title, description }: Empl
             {selectedNode.caseItem.description || "No description was provided."}
           </Typography>
         </Box>
+
+        <Divider />
+        <Typography variant="subtitle1">Escalation Workflow</Typography>
+
+        {workflowLoading && isSelectedWorkflowCurrent && (
+          <Stack direction="row" spacing={1} alignItems="center">
+            <CircularProgress size={18} />
+            <Typography variant="body2" color="text.secondary">
+              Loading endorsements and reassignment controls...
+            </Typography>
+          </Stack>
+        )}
+
+        {workflowError && isSelectedWorkflowCurrent && <Alert severity="error">{workflowError}</Alert>}
+        {endorsementFeedback && <Alert severity={endorsementFeedback.type}>{endorsementFeedback.message}</Alert>}
+        {reassignFeedback && <Alert severity={reassignFeedback.type}>{reassignFeedback.message}</Alert>}
+
+        {isSelectedWorkflowCurrent && workflowDetails && (
+          <Stack spacing={1.25}>
+            <Typography variant="body2">
+              Assigned To:{" "}
+              {workflowDetails.case.assignedToUser
+                ? formatUserDisplayName(workflowDetails.case.assignedToUser)
+                : "Unassigned"}
+            </Typography>
+
+            <Stack direction="row" spacing={0.75} useFlexGap flexWrap="wrap">
+              <Chip
+                size="small"
+                variant="outlined"
+                label={`Pending Endorsements: ${workflowDetails.case.pendingEndorsementCount}`}
+              />
+              {workflowDetails.endorsements[0] && (
+                <Chip
+                  size="small"
+                  color={getEndorsementStatusChipColor(workflowDetails.endorsements[0].status)}
+                  variant="outlined"
+                  label={`Latest: ${workflowDetails.endorsements[0].status}`}
+                />
+              )}
+            </Stack>
+
+            <Typography variant="subtitle2">Endorsement Timeline</Typography>
+            {workflowEndorsements.length === 0 && (
+              <Typography variant="body2" color="text.secondary">
+                No endorsements recorded for this case.
+              </Typography>
+            )}
+
+            {workflowEndorsements.length > 0 && (
+              <Stack spacing={1}>
+                {workflowEndorsements.map((endorsement) => (
+                  <Box
+                    key={endorsement.id}
+                    sx={{
+                      p: 1.1,
+                      borderRadius: 1,
+                      border: "1px solid #E5E7EB",
+                      backgroundColor: endorsement.status === "Pending" ? "#FEF9C3" : "#F9FAFB",
+                    }}
+                  >
+                    <Stack direction="row" justifyContent="space-between" alignItems="center">
+                      <Typography variant="caption" color="text.secondary">
+                        {endorsement.endorsedBy.name || endorsement.endorsedBy.email}
+                        {" -> "}
+                        {endorsement.endorsedTo.name || endorsement.endorsedTo.email}
+                      </Typography>
+                      <Chip
+                        size="small"
+                        color={getEndorsementStatusChipColor(endorsement.status)}
+                        label={endorsement.status}
+                      />
+                    </Stack>
+                    <Typography variant="caption" color="text.secondary">
+                      {safeFormatDate(endorsement.createdAt)}
+                    </Typography>
+                  </Box>
+                ))}
+              </Stack>
+            )}
+
+            {isCsrSession && (
+              <>
+                <Divider />
+                <Typography variant="subtitle2">Endorse Case</Typography>
+                <FormControl
+                  fullWidth
+                  size="small"
+                  disabled={sendingEndorsement || workflowLoading || !canEndorseCase}
+                >
+                  <InputLabel id="endorsement-target-select-label">Manager or Executive</InputLabel>
+                  <Select
+                    labelId="endorsement-target-select-label"
+                    label="Manager or Executive"
+                    value={selectedEndorseTargetId}
+                    onChange={(event) => setSelectedEndorseTargetId(event.target.value)}
+                  >
+                    {workflowDetails.endorsementTargets.map((target) => (
+                      <MenuItem key={target.id} value={target.id}>
+                        {target.name || target.email} ({target.role})
+                      </MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
+                <Button
+                  variant="contained"
+                  color="warning"
+                  onClick={handleCreateEndorsement}
+                  disabled={
+                    sendingEndorsement ||
+                    workflowLoading ||
+                    !canEndorseCase ||
+                    !selectedEndorseTargetId
+                  }
+                >
+                  {sendingEndorsement ? "Endorsing..." : "Endorse Upward"}
+                </Button>
+                {!canEndorseCase && workflowDetails.case.hasPendingEndorsement && (
+                  <Typography variant="caption" color="text.secondary">
+                    A pending endorsement already exists for this case.
+                  </Typography>
+                )}
+              </>
+            )}
+
+            {canReviewEndorsements && pendingEndorsementsForViewer.length > 0 && (
+              <>
+                <Divider />
+                <Typography variant="subtitle2">Pending Endorsements For You</Typography>
+                <Stack spacing={1}>
+                  {pendingEndorsementsForViewer.map((endorsement) => (
+                    <Box
+                      key={endorsement.id}
+                      sx={{
+                        p: 1.1,
+                        borderRadius: 1,
+                        border: "1px solid #E5E7EB",
+                        backgroundColor: "#FEFCE8",
+                      }}
+                    >
+                      <Typography variant="body2">
+                        From: {endorsement.endorsedBy.name || endorsement.endorsedBy.email}
+                      </Typography>
+                      <Typography variant="caption" color="text.secondary">
+                        {safeFormatDate(endorsement.createdAt)}
+                      </Typography>
+                      <Stack direction="row" spacing={1} sx={{ mt: 1 }}>
+                        <Button
+                          size="small"
+                          variant="contained"
+                          color="success"
+                          disabled={decidingEndorsementId === endorsement.id}
+                          onClick={() => handleDecideEndorsement(endorsement.id, "Accepted")}
+                        >
+                          Accept
+                        </Button>
+                        <Button
+                          size="small"
+                          variant="outlined"
+                          color="error"
+                          disabled={decidingEndorsementId === endorsement.id}
+                          onClick={() => handleDecideEndorsement(endorsement.id, "Rejected")}
+                        >
+                          Reject
+                        </Button>
+                      </Stack>
+                    </Box>
+                  ))}
+                </Stack>
+              </>
+            )}
+
+            {canReassignCases && (
+              <>
+                <Divider />
+                <Typography variant="subtitle2">Case Reassignment</Typography>
+                <FormControl fullWidth size="small" disabled={reassigningCase || workflowLoading}>
+                  <InputLabel id="reassign-target-select-label">Assign To CSR</InputLabel>
+                  <Select
+                    labelId="reassign-target-select-label"
+                    label="Assign To CSR"
+                    value={reassignTargetId}
+                    onChange={(event) => setReassignTargetId(event.target.value)}
+                  >
+                    {reassignCandidates.map((candidate) => (
+                      <MenuItem key={candidate.id} value={candidate.id}>
+                        {candidate.name || candidate.email} ({candidate.role})
+                      </MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
+                <TextField
+                  size="small"
+                  label="Reassignment Reason (Optional)"
+                  value={reassignReasonDraft}
+                  onChange={(event) => setReassignReasonDraft(event.target.value)}
+                  disabled={reassigningCase || workflowLoading}
+                />
+                <Button
+                  variant="contained"
+                  onClick={handleReassignCase}
+                  disabled={reassigningCase || workflowLoading || !reassignTargetId}
+                >
+                  {reassigningCase ? "Reassigning..." : "Reassign Case"}
+                </Button>
+              </>
+            )}
+          </Stack>
+        )}
 
         {isCsrSession && (
           <>
@@ -1462,7 +2035,7 @@ export function EmployeeTreeWorkspace({ allowedRoles, title, description }: Empl
                                               selectedNode.customer.id === customer.id &&
                                               selectedNode.caseItem.id === caseItem.id;
 
-                                            const caseStyle = priorityStyleMap[caseItem.priority];
+                                            const caseStyle = getCaseVisualStyle(caseItem);
 
                                             return (
                                               <Button
@@ -1502,6 +2075,15 @@ export function EmployeeTreeWorkspace({ allowedRoles, title, description }: Empl
                                                     label={caseItem.status}
                                                     sx={{ height: 20 }}
                                                   />
+                                                  {caseItem.hasPendingEndorsement && (
+                                                    <Chip
+                                                      size="small"
+                                                      color="warning"
+                                                      variant="filled"
+                                                      label="Endorsed"
+                                                      sx={{ height: 20 }}
+                                                    />
+                                                  )}
                                                 </Stack>
                                               </Button>
                                             );
