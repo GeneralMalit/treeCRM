@@ -244,7 +244,10 @@ export async function updateCaseStatusPriority(
 export async function updateCaseTags(
   accessToken: string,
   caseId: string,
-  tagIds: string[],
+  payload: {
+    tagIds: string[];
+    customTagNames?: string[];
+  },
 ): Promise<CaseTagOption[]> {
   const response = await fetch(`${API_BASE_URL}/employee/cases/${caseId}/tags`, {
     method: "PUT",
@@ -252,7 +255,7 @@ export async function updateCaseTags(
       "Content-Type": "application/json",
       Authorization: `Bearer ${accessToken}`,
     },
-    body: JSON.stringify({ tagIds }),
+    body: JSON.stringify(payload),
   });
 
   const rawBody = (await parseJsonResponse(response)) as CaseManagementRawResponse;

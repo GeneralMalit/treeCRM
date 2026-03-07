@@ -68,6 +68,7 @@ export type EmployeeTreeEmployee = {
   name: string | null;
   email: string;
   role: Role;
+  managerId: string | null;
   createdAt: string;
   metrics: PerformanceMetrics;
   customers: EmployeeTreeCustomer[];
@@ -316,6 +317,7 @@ function parseEmployee(value: unknown): EmployeeTreeEmployee {
     (typeof value.name !== "string" && value.name !== null) ||
     typeof value.email !== "string" ||
     !isRole(value.role) ||
+    (typeof value.managerId !== "string" && value.managerId !== null && typeof value.managerId !== "undefined") ||
     typeof value.createdAt !== "string" ||
     !isRecord(value.metrics) ||
     !Array.isArray(value.customers)
@@ -328,6 +330,7 @@ function parseEmployee(value: unknown): EmployeeTreeEmployee {
     name: value.name,
     email: value.email,
     role: value.role,
+    managerId: value.managerId === null || typeof value.managerId === "undefined" ? null : value.managerId,
     createdAt: value.createdAt,
     metrics: parsePerformanceMetrics(value.metrics),
     customers: value.customers.map(parseCustomer),

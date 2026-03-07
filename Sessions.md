@@ -1,10 +1,10 @@
-# TreeCRM — Development Session Checklist
+ï»¿# TreeCRM â€” Development Session Checklist
 
 This checklist tracks the completion of each TreeCRM development session. Each session includes **tasks to accomplish** and a **target outcome**. Tick boxes as items are completed.
 
 ---
 
-## Session 1 — Project Initialization & Infrastructure Setup
+## Session 1 â€” Project Initialization & Infrastructure Setup
 
 **Objective:** Establish development environment and connections.
 
@@ -36,7 +36,7 @@ This checklist tracks the completion of each TreeCRM development session. Each s
 
 ---
 
-## Session 2 — Authentication System
+## Session 2 â€” Authentication System
 
 **Objective:** Migrate backend to TypeScript, then implement user authentication and role-based routing.
 
@@ -93,7 +93,7 @@ This checklist tracks the completion of each TreeCRM development session. Each s
 
 ---
 
-## Session 3 — Core Database Models
+## Session 3 â€” Core Database Models
 
 **Objective:** Build database schema for TreeCRM.
 
@@ -125,7 +125,7 @@ This checklist tracks the completion of each TreeCRM development session. Each s
 
 ---
 
-## Session 4 — Employee Tree Interface
+## Session 4 â€” Employee Tree Interface
 
 **Objective:** Build hierarchical tree interface.
 
@@ -153,7 +153,7 @@ This checklist tracks the completion of each TreeCRM development session. Each s
 
 ---
 
-## Session 5 — Case Management
+## Session 5 â€” Case Management
 
 **Objective:** Enable CSRs to manage cases.
 
@@ -179,7 +179,7 @@ This checklist tracks the completion of each TreeCRM development session. Each s
 
 ---
 
-## Session 6 — Customer Portal
+## Session 6 â€” Customer Portal
 
 **Objective:** Build customer-facing interface.
 
@@ -215,7 +215,7 @@ This checklist tracks the completion of each TreeCRM development session. Each s
 - Follow-up completed (March 6, 2026): applied via Supabase MCP as migration `session_6_customer_portal` (version `20260306102029`).
 ---
 
-## Session 7 — Chat System
+## Session 7 â€” Chat System
 
 **Objective:** Enable real-time communication.
 
@@ -258,7 +258,7 @@ This checklist tracks the completion of each TreeCRM development session. Each s
 
 ---
 
-## Session 8 — Endorsements & Reassignment
+## Session 8 â€” Endorsements & Reassignment
 
 **Objective:** Implement case escalation workflow.
 
@@ -297,7 +297,7 @@ This checklist tracks the completion of each TreeCRM development session. Each s
 
 ---
 
-## Session 9 — Metrics & Dashboards
+## Session 9 â€” Metrics & Dashboards
 
 **Objective:** Track performance metrics and display dashboards.
 
@@ -436,9 +436,29 @@ This checklist tracks the completion of each TreeCRM development session. Each s
 - Absolute path: d:\Desktop\Main\Files\Programming\Projects\treeCRM\docs\session_12_skill_tree_plan.md
 
 ### Tasks
-- [ ] Implement skill-tree style employee graph UI (CSR radial case rings + manager/executive hierarchy focus flow).
-- [ ] Keep escalation as approval-only (no automatic reassignment on endorsement approval).
-- [ ] Enable CSR custom tag creation during case tag updates.
-- [ ] Run lint/build/smoke validation and complete production verification.
+- [x] Implement skill-tree style employee graph UI (CSR radial case rings + manager/executive hierarchy focus flow).
+- [x] Keep escalation as approval-only (no automatic reassignment on endorsement approval).
+- [x] Enable CSR custom tag creation during case tag updates.
+- [x] Run lint/build/smoke validation.
+- [ ] Complete production verification.
 
 **Execution Reference:** See docs/session_12_skill_tree_plan.md for the full decision-complete implementation details.
+
+**Summary (March 7, 2026):**
+- Replaced the old list-style employee tree in the workspace with graph-driven canvases:
+  - CSR sessions now render a focused radial skill tree with customer context nodes and priority-based case rings.
+  - Manager/Executive/Admin sessions now render an employee hierarchy graph first, then open a focused CSR skill tree on CSR selection.
+- Extended `GET /employee/tree` to include employee hierarchy metadata (`managerId`) so the frontend can render explicit reporting links.
+- Locked endorsement decisions to approval-only semantics in both API and UI:
+  - `PATCH /employee/endorsements/:endorsementId` now returns `caseAssignmentChanged: false`.
+  - Workflow copy now explicitly states approval does not reassign the case.
+  - System timeline messages now state that assignment remains unchanged unless a separate reassignment is performed.
+- Extended `PUT /employee/cases/:caseId/tags` so CSR users can submit `customTagNames` alongside `tagIds`, with case-insensitive resolution against shared tags and automatic creation of missing shared tags.
+- Updated the CSR case-management panel to stage custom tags inline, add them with Enter/button interactions, and clear drafts after save.
+- Local validation completed successfully:
+  - backend `npm run lint`
+  - backend `npm run build`
+  - backend `npm run test:session10` (now includes Session 12 assertions for custom tags and approval-without-reassignment)
+  - frontend `npm run lint`
+  - frontend `npm run build`
+- Production verification is still pending because the local workspace is configured against `http://localhost:4000` / `http://localhost:3000`, not the deployed Session 11 URLs.

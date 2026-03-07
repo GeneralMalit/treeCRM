@@ -42,7 +42,7 @@ async function request<T>(
   baseUrl: string,
   path: string,
   options?: {
-    method?: "GET" | "POST" | "PATCH" | "DELETE";
+    method?: "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
     token?: string;
     body?: unknown;
   },
@@ -225,6 +225,23 @@ async function run() {
     });
     ensureOk(csrStatusInProgress.response, csrStatusInProgress.body, "Failed to move case to In Progress.");
 
+    const customTagName = `Session12-${seed}`;
+    const customTagUpdate = await request<{
+      tags: Array<{ name: string; selected: boolean }>;
+    }>(baseUrl, `/employee/cases/${ticketId}/tags`, {
+      method: "PUT",
+      token: csrAToken,
+      body: {
+        tagIds: [],
+        customTagNames: [customTagName, customTagName.toLowerCase()],
+      },
+    });
+    ensureOk(customTagUpdate.response, customTagUpdate.body, "Failed to create a custom CSR tag.");
+    assert(
+      customTagUpdate.body.data?.tags.some((tag) => tag.name === customTagName && tag.selected),
+      "Custom tag update did not return the new shared tag as selected.",
+    );
+
     const endorsementCreate = await request<{
       endorsement: {
         id: string;
@@ -257,6 +274,27 @@ async function run() {
       body: { status: "Accepted" },
     });
     ensureOk(endorsementDecision.response, endorsementDecision.body, "Failed to accept endorsement.");
+    assert(
+      endorsementDecision.body.data &&
+        "caseAssignmentChanged" in endorsementDecision.body.data &&
+        endorsementDecision.body.data.caseAssignmentChanged === false,
+      "Endorsement decision should explicitly report unchanged assignment.",
+    );
+
+    const managerWorkflowAfterDecision = await request<{
+      case: { assignedTo: string | null };
+    }>(baseUrl, `/employee/cases/${ticketId}/workflow`, {
+      token: managerToken,
+    });
+    ensureOk(
+      managerWorkflowAfterDecision.response,
+      managerWorkflowAfterDecision.body,
+      "Failed to reload workflow after endorsement approval.",
+    );
+    assert(
+      managerWorkflowAfterDecision.body.data?.case.assignedTo === csrAUserId,
+      "Approving an escalation request should not reassign the case.",
+    );
 
     const reassignToCsrB = await request(baseUrl, `/employee/cases/${ticketId}/reassign`, {
       method: "PATCH",

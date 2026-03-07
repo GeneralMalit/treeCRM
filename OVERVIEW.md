@@ -1,4 +1,4 @@
-# TreeCRM - Full Vision & System Overview
+﻿# TreeCRM - Full Vision & System Overview
 
 ## Core Concept
 TreeCRM is a visual customer service management platform that combines traditional ticketing with a hierarchical graphical interface for support operations.
@@ -86,7 +86,7 @@ TreeCRM has two main interfaces: Employee Interface (Tree System) and Customer P
 ## Employee Interface (Tree System)
 Primary operational control center with a hierarchical tree showing organization and active cases.
 
-**Status (March 6, 2026):** Session 4 delivered a working tree supporting CSR/Manager/Executive dashboards, consuming live data, expand/collapse navigation, and priority-styled case detail panels. CSR tree now lets CSR users update case status, priority, tags, and internal notes while keeping the visual hierarchy in sync with backend changes.
+**Status (March 7, 2026):** Session 12 replaced the old list/tree workspace with a graph-first employee view. CSR users now get a focused radial skill tree with customer context nodes and priority rings, while Manager/Executive/Admin users get an employee hierarchy graph that opens focused CSR skill trees on selection. The same details/chat panels remain in sync with graph selection.
 
 
 Example structure:
@@ -342,7 +342,8 @@ CSR reply -> Customer sees message instantly
 - Session 3 public-table RLS hardening is now implemented (`users`, `customers`, `cases`, `tags`, `case_tags`, `messages`, `endorsements`, `notifications`).
 - Session 6 smoke test reliability can be impacted by Supabase email-rate limits when creating multiple fresh auth users quickly.
 - Session 11 completed database hardening (`public.internal_messages` now enforces RLS as of 2026-03-07); check `docs/session_11_internal_messages_rls.sql` for policy details.
-- Next dependency is Session 12 skill-tree execution plan; see `docs/session_12_skill_tree_plan.md` before starting the visuals + escalation work.
+- Session 12 is now implemented locally as of March 7, 2026: the employee workspace uses graph canvases, escalation approval no longer implies reassignment, and CSR custom tags are supported in case management.
+- Remaining follow-up for Session 12: production verification against the deployed Session 11 frontend/backend URLs.
 
 ## Performance Metrics
 Managers and executives track CSR metrics:
@@ -375,4 +376,6 @@ Result: the full support system becomes understandable at a glance, enabling fas
 
 ## Development Reminder (MCP First)
 For Supabase-related work in this repo, use the Supabase MCP server first before manual Dashboard steps. Use MCP for creating test users, setting role metadata, and auth verification whenever possible.
+
+
 

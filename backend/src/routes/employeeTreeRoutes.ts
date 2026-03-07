@@ -113,6 +113,10 @@ const ENDORSEMENT_DECISION_VALUES = ["Accepted", "Rejected"] as const;
 const ENDORSEMENT_TARGET_ROLES: Role[] = ["Manager", "Executive"];
 const CASE_REASSIGN_ROLES: Role[] = ["Manager", "Executive", "Admin"];
 const ONGOING_CASE_STATUSES: CaseStatus[] = ["Open", "In Progress"];
+const CUSTOM_TAG_DEFAULT_COLOR = "#6B7280";
+const CUSTOM_TAG_NAME_MIN_LENGTH = 2;
+const CUSTOM_TAG_NAME_MAX_LENGTH = 40;
+const CUSTOM_TAG_REQUEST_LIMIT = 10;
 
 const VISIBLE_EMPLOYEE_ROLES: Record<"CSR" | "Manager" | "Executive" | "Admin", Role[]> = {
   CSR: ["CSR"],
@@ -577,7 +581,11 @@ function parseCasePatchBody(body: unknown): ValidationResult<{ status?: CaseStat
   return { data: parsed };
 }
 
-function parseTagUpdateBody(body: unknown): ValidationResult<{ tagIds: string[] }> {
+function normalizeTagName(value: string): string {
+  return value.trim().replace(/\s+/g, " ");
+}
+
+function parseTagUpdateBody(body: unknown): ValidationResult<{ tagIds: string[]; customTagNames: string[] }> {
   if (!isRecord(body)) {
     return { error: "Request body must be a JSON object." };
   }
@@ -592,7 +600,44 @@ function parseTagUpdateBody(body: unknown): ValidationResult<{ tagIds: string[] 
     return { error: "All tagIds must be valid UUID strings." };
   }
 
-  return { data: { tagIds: deduped as string[] } };
+  const rawCustomTagNames =
+    typeof body.customTagNames === "undefined" ? [] : body.customTagNames;
+
+  if (!Array.isArray(rawCustomTagNames)) {
+    return { error: "customTagNames must be an array of tag names when provided." };
+  }
+
+  if (rawCustomTagNames.length > CUSTOM_TAG_REQUEST_LIMIT) {
+    return {
+      error: `customTagNames cannot contain more than ${CUSTOM_TAG_REQUEST_LIMIT} entries.`,
+    };
+  }
+
+  const normalizedCustomTagNames = new Map<string, string>();
+  for (const rawValue of rawCustomTagNames) {
+    if (typeof rawValue !== "string") {
+      return { error: "customTagNames must contain only strings." };
+    }
+
+    const normalizedName = normalizeTagName(rawValue);
+    if (normalizedName.length < CUSTOM_TAG_NAME_MIN_LENGTH || normalizedName.length > CUSTOM_TAG_NAME_MAX_LENGTH) {
+      return {
+        error: `Each custom tag name must be ${CUSTOM_TAG_NAME_MIN_LENGTH}-${CUSTOM_TAG_NAME_MAX_LENGTH} characters after trimming.`,
+      };
+    }
+
+    const normalizedKey = normalizedName.toLowerCase();
+    if (!normalizedCustomTagNames.has(normalizedKey)) {
+      normalizedCustomTagNames.set(normalizedKey, normalizedName);
+    }
+  }
+
+  return {
+    data: {
+      tagIds: deduped as string[],
+      customTagNames: Array.from(normalizedCustomTagNames.values()),
+    },
+  };
 }
 
 function parseInternalNoteCreateBody(body: unknown): ValidationResult<{ messageText: string }> {
@@ -765,6 +810,110 @@ function mapCase(caseItem: CaseRow, pendingSummary?: PendingEndorsementSummary) 
   };
 }
 
+function mapCaseTagOptions(tags: TagRow[], caseTags: CaseTagRow[]) {
+  const selectedTagIds = new Set(caseTags.map((row) => row.tag_id));
+
+  return tags.map((tag) => ({
+    id: tag.id,
+    name: tag.name,
+    color: tag.color,
+    affectsNodeColor: tag.affects_node_color,
+    selected: selectedTagIds.has(tag.id),
+  }));
+}
+
+async function loadCaseTagOptions(
+  client: NonNullable<typeof supabaseAdmin>,
+  caseId: string,
+): Promise<ValidationResult<ReturnType<typeof mapCaseTagOptions>>> {
+  const [tagsResult, caseTagsResult] = await Promise.all([
+    client.from("tags").select("id,name,color,affects_node_color").order("name", { ascending: true }),
+    client.from("case_tags").select("tag_id").eq("case_id", caseId),
+  ]);
+
+  if (tagsResult.error || caseTagsResult.error) {
+    return {
+      error:
+        tagsResult.error?.message ??
+        caseTagsResult.error?.message ??
+        "Failed to load updated tags.",
+    };
+  }
+
+  const tags = toTagRows((tagsResult.data ?? []) as unknown[]);
+  const caseTags = toCaseTagRows((caseTagsResult.data ?? []) as unknown[]);
+  return { data: mapCaseTagOptions(tags, caseTags) };
+}
+
+async function resolveOrCreateCustomTags(
+  client: NonNullable<typeof supabaseAdmin>,
+  customTagNames: string[],
+): Promise<ValidationResult<TagRow[]>> {
+  if (customTagNames.length === 0) {
+    return { data: [] };
+  }
+
+  const allTagsResult = await client
+    .from("tags")
+    .select("id,name,color,affects_node_color")
+    .order("name", { ascending: true });
+
+  if (allTagsResult.error) {
+    return { error: allTagsResult.error.message };
+  }
+
+  const allTags = toTagRows((allTagsResult.data ?? []) as unknown[]);
+  const tagByLowerName = new Map(allTags.map((tag) => [tag.name.trim().toLowerCase(), tag]));
+  const missingNames = customTagNames.filter((name) => !tagByLowerName.has(name.toLowerCase()));
+
+  if (missingNames.length > 0) {
+    const insertResult = await client
+      .from("tags")
+      .insert(
+        missingNames.map((name) => ({
+          name,
+          color: CUSTOM_TAG_DEFAULT_COLOR,
+          affects_node_color: false,
+        })),
+      )
+      .select("id,name,color,affects_node_color");
+
+    if (insertResult.error) {
+      const refetchResult = await client
+        .from("tags")
+        .select("id,name,color,affects_node_color")
+        .order("name", { ascending: true });
+
+      if (!refetchResult.error) {
+        const refetchedTags = toTagRows((refetchResult.data ?? []) as unknown[]);
+        const refetchedByLowerName = new Map(
+          refetchedTags.map((tag) => [tag.name.trim().toLowerCase(), tag]),
+        );
+        const allResolved = customTagNames.every((name) => refetchedByLowerName.has(name.toLowerCase()));
+        if (allResolved) {
+          return {
+            data: customTagNames
+              .map((name) => refetchedByLowerName.get(name.toLowerCase()) ?? null)
+              .filter((tag): tag is TagRow => tag !== null),
+          };
+        }
+      }
+
+      return { error: insertResult.error.message };
+    }
+
+    for (const createdTag of toTagRows((insertResult.data ?? []) as unknown[])) {
+      tagByLowerName.set(createdTag.name.trim().toLowerCase(), createdTag);
+    }
+  }
+
+  return {
+    data: customTagNames
+      .map((name) => tagByLowerName.get(name.toLowerCase()) ?? null)
+      .filter((tag): tag is TagRow => tag !== null),
+  };
+}
+
 async function fetchUsersMapByIds(
   client: NonNullable<typeof supabaseAdmin>,
   userIds: string[],
@@ -776,7 +925,7 @@ async function fetchUsersMapByIds(
   const dedupedUserIds = Array.from(new Set(userIds));
   const usersResult = await client
     .from("users")
-    .select("id,email,name,role,created_at")
+    .select("id,email,name,role,manager_id,created_at")
     .in("id", dedupedUserIds);
 
   if (usersResult.error) {
@@ -1070,6 +1219,7 @@ router.get("/employee/tree", requireAuth, requireRole("CSR", "Manager", "Executi
       name: employee.name,
       email: employee.email,
       role: employee.role,
+      managerId: employee.manager_id,
       createdAt: employee.created_at,
       metrics: employeeMetricsById.get(employee.id) ?? emptyMetrics,
       customers: customersSorted,
@@ -1169,9 +1319,8 @@ router.get("/employee/cases/:caseId/manage", requireAuth, requireRole("CSR"), as
     return;
   }
 
-  const [tagsResult, caseTagsResult, notesResult] = await Promise.all([
-    client.from("tags").select("id,name,color,affects_node_color").order("name", { ascending: true }),
-    client.from("case_tags").select("tag_id").eq("case_id", caseId.data),
+  const [tagOptionsResult, notesResult] = await Promise.all([
+    loadCaseTagOptions(client, caseId.data),
     client
       .from("messages")
       .select("id,sender_id,sender_role,message_text,created_at")
@@ -1180,34 +1329,24 @@ router.get("/employee/cases/:caseId/manage", requireAuth, requireRole("CSR"), as
       .order("created_at", { ascending: false }),
   ]);
 
-  if (tagsResult.error || caseTagsResult.error || notesResult.error) {
+  if ("error" in tagOptionsResult || notesResult.error) {
     res.status(500).json({
       status: "error",
       message:
-        tagsResult.error?.message ??
-        caseTagsResult.error?.message ??
+        ("error" in tagOptionsResult ? tagOptionsResult.error : undefined) ??
         notesResult.error?.message ??
         "Failed to load case management details.",
     });
     return;
   }
 
-  const tags = toTagRows((tagsResult.data ?? []) as unknown[]);
-  const caseTags = toCaseTagRows((caseTagsResult.data ?? []) as unknown[]);
-  const selectedTagIds = new Set(caseTags.map((row) => row.tag_id));
   const internalNotes = toInternalNoteRows((notesResult.data ?? []) as unknown[]);
 
   res.json({
     status: "ok",
     data: {
       case: mapCase(caseResult.data),
-      tags: tags.map((tag) => ({
-        id: tag.id,
-        name: tag.name,
-        color: tag.color,
-        affectsNodeColor: tag.affects_node_color,
-        selected: selectedTagIds.has(tag.id),
-      })),
+      tags: tagOptionsResult.data,
       internalNotes: internalNotes.map((note) => ({
         id: note.id,
         senderId: note.sender_id,
@@ -1421,6 +1560,22 @@ router.put("/employee/cases/:caseId/tags", requireAuth, requireRole("CSR"), asyn
     }
   }
 
+  const customTagsResult = await resolveOrCreateCustomTags(client, parsedBody.data.customTagNames);
+  if ("error" in customTagsResult) {
+    res.status(400).json({
+      status: "error",
+      message: customTagsResult.error,
+    });
+    return;
+  }
+
+  const finalTagIds = Array.from(
+    new Set([
+      ...parsedBody.data.tagIds,
+      ...customTagsResult.data.map((tag) => tag.id),
+    ]),
+  );
+
   const deleteResult = await client.from("case_tags").delete().eq("case_id", caseId.data);
   if (deleteResult.error) {
     res.status(400).json({
@@ -1430,9 +1585,9 @@ router.put("/employee/cases/:caseId/tags", requireAuth, requireRole("CSR"), asyn
     return;
   }
 
-  if (parsedBody.data.tagIds.length > 0) {
+  if (finalTagIds.length > 0) {
     const insertResult = await client.from("case_tags").insert(
-      parsedBody.data.tagIds.map((tagId) => ({
+      finalTagIds.map((tagId) => ({
         case_id: caseId.data,
         tag_id: tagId,
       })),
@@ -1447,36 +1602,19 @@ router.put("/employee/cases/:caseId/tags", requireAuth, requireRole("CSR"), asyn
     }
   }
 
-  const [tagsResult, caseTagsResult] = await Promise.all([
-    client.from("tags").select("id,name,color,affects_node_color").order("name", { ascending: true }),
-    client.from("case_tags").select("tag_id").eq("case_id", caseId.data),
-  ]);
-
-  if (tagsResult.error || caseTagsResult.error) {
+  const tagOptionsResult = await loadCaseTagOptions(client, caseId.data);
+  if ("error" in tagOptionsResult) {
     res.status(500).json({
       status: "error",
-      message:
-        tagsResult.error?.message ??
-        caseTagsResult.error?.message ??
-        "Failed to load updated tags.",
+      message: tagOptionsResult.error,
     });
     return;
   }
 
-  const tags = toTagRows((tagsResult.data ?? []) as unknown[]);
-  const caseTags = toCaseTagRows((caseTagsResult.data ?? []) as unknown[]);
-  const selectedTagIds = new Set(caseTags.map((row) => row.tag_id));
-
   res.json({
     status: "ok",
     data: {
-      tags: tags.map((tag) => ({
-        id: tag.id,
-        name: tag.name,
-        color: tag.color,
-        affectsNodeColor: tag.affects_node_color,
-        selected: selectedTagIds.has(tag.id),
-      })),
+      tags: tagOptionsResult.data,
     },
   });
 });
@@ -1983,7 +2121,7 @@ router.patch(
     if (endorsement.status !== "Pending") {
       res.status(409).json({
         status: "error",
-        message: "Only pending endorsements can be accepted or rejected.",
+        message: "Only pending escalation requests can be approved or rejected.",
       });
       return;
     }
@@ -2060,14 +2198,14 @@ router.patch(
       sender_id: viewer.sub,
       sender_role: viewer.role,
       message_type: "system",
-      message_text: `Endorsement ${parsedBody.data.status.toLowerCase()} by ${viewerDisplayName}.`,
+      message_text: `Escalation request ${parsedBody.data.status.toLowerCase()} by ${viewerDisplayName}. Assignment unchanged unless manually reassigned.`,
     });
 
     if (updatedEndorsement.endorsed_by !== viewer.sub) {
       await createNotification({
         userId: updatedEndorsement.endorsed_by,
         type: "case_endorsement_decision",
-        message: `Your endorsement on "${caseResult.data.title}" was ${parsedBody.data.status.toLowerCase()} by ${viewerDisplayName}.`,
+        message: `Your escalation request on "${caseResult.data.title}" was ${parsedBody.data.status.toLowerCase()} by ${viewerDisplayName}. Assignment is unchanged.`,
       });
     }
 
@@ -2079,7 +2217,7 @@ router.patch(
       await createNotification({
         userId: caseResult.data.assigned_to,
         type: "case_endorsement_decision",
-        message: `An endorsement on "${caseResult.data.title}" was ${parsedBody.data.status.toLowerCase()}.`,
+        message: `An escalation request on "${caseResult.data.title}" was ${parsedBody.data.status.toLowerCase()}. Assignment is unchanged.`,
       });
     }
 
@@ -2096,6 +2234,7 @@ router.patch(
       status: "ok",
       data: {
         endorsement: mapped,
+        caseAssignmentChanged: false,
       },
     });
   },

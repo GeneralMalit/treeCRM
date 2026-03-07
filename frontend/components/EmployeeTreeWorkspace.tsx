@@ -22,6 +22,8 @@ import {
 } from "@mui/material";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { HierarchyCanvas } from "@/components/graph/HierarchyCanvas";
+import { SkillTreeCanvas } from "@/components/graph/SkillTreeCanvas";
 import {
   addInternalNote,
   fetchCaseManagementDetails,
@@ -173,38 +175,33 @@ function upsertWorkflowEndorsement(
 
 const priorityStyleMap: Record<
   EmployeeTreeCase["priority"],
-  { border: string; background: string; chipColor: "error" | "warning" | "info" }
+  { border: string; background: string; chipColor: "error" | "warning" | "default" }
 > = {
   High: {
-    border: "#B91C1C",
+    border: "#DC2626",
     background: "#FEF2F2",
     chipColor: "error",
   },
   Medium: {
-    border: "#B45309",
+    border: "#EAB308",
     background: "#FFFBEB",
     chipColor: "warning",
   },
   Low: {
-    border: "#1D4ED8",
-    background: "#EFF6FF",
-    chipColor: "info",
+    border: "#9CA3AF",
+    background: "#F8FAFC",
+    chipColor: "default",
   },
 };
 
 const endorsedCaseStyle = {
-  border: "#CA8A04",
+  border: "#FACC15",
   background: "#FEF9C3",
   chipColor: "warning" as const,
 };
 
 const CASE_STATUSES: CaseStatus[] = ["Open", "In Progress", "Resolved", "Dropped"];
 const CASE_PRIORITIES: CasePriority[] = ["High", "Medium", "Low"];
-const PRIORITY_RING_LAYOUT: Array<{ priority: CasePriority; label: string; width: string }> = [
-  { priority: "High", label: "High Priority (Inner Arc)", width: "58%" },
-  { priority: "Medium", label: "Medium Priority (Middle Arc)", width: "78%" },
-  { priority: "Low", label: "Low Priority (Outer Arc)", width: "96%" },
-];
 
 function getCaseVisualStyle(caseItem: EmployeeTreeCase) {
   if (caseItem.hasPendingEndorsement) {
@@ -269,15 +266,6 @@ function getEndorsementStatusChipColor(
     default:
       return "default";
   }
-}
-
-function buildDefaultExpandedTree(employeeNodes: EmployeeTreeEmployee[]): Record<string, boolean> {
-  const expanded: Record<string, boolean> = {};
-  for (const employee of employeeNodes) {
-    expanded[`employee:${employee.id}`] = true;
-  }
-
-  return expanded;
 }
 
 function pickInitialSelectedNode(employeeNodes: EmployeeTreeEmployee[]): SelectedNode | null {
@@ -352,12 +340,15 @@ export function EmployeeTreeWorkspace({ allowedRoles, title, description }: Empl
   const router = useRouter();
   const [state, setState] = useState<ViewState>({ status: "loading" });
   const [selectedNode, setSelectedNode] = useState<SelectedNode | null>(null);
-  const [expandedNodes, setExpandedNodes] = useState<Record<string, boolean>>({});
+  const [focusedCsrEmployeeId, setFocusedCsrEmployeeId] = useState<string | null>(null);
+  const [focusedCustomerId, setFocusedCustomerId] = useState<string | null>(null);
   const [caseMetaCaseId, setCaseMetaCaseId] = useState<string | null>(null);
   const [caseMetaLoading, setCaseMetaLoading] = useState(false);
   const [caseMetaError, setCaseMetaError] = useState<string | null>(null);
   const [caseTags, setCaseTags] = useState<CaseTagOption[]>([]);
   const [selectedTagIds, setSelectedTagIds] = useState<string[]>([]);
+  const [customTagDraft, setCustomTagDraft] = useState("");
+  const [customTagDraftList, setCustomTagDraftList] = useState<string[]>([]);
   const [internalNotes, setInternalNotes] = useState<InternalNote[]>([]);
   const [statusDraft, setStatusDraft] = useState<CaseStatus>("Open");
   const [priorityDraft, setPriorityDraft] = useState<CasePriority>("Medium");
@@ -396,7 +387,12 @@ export function EmployeeTreeWorkspace({ allowedRoles, title, description }: Empl
   const socketRef = useRef<RealtimeSocket | null>(null);
   const currentUserRef = useRef<ReadyState["user"] | null>(null);
 
+  const employeeNodes = useMemo(
+    () => (state.status === "ready" ? state.data.tree.data : []),
+    [state],
+  );
   const selectedCaseId = selectedNode?.kind === "case" ? selectedNode.caseItem.id : null;
+  const selectedEmployeeId = selectedNode?.employee.id ?? null;
   const sessionRole = state.status === "ready" ? state.data.user.role : null;
   const isCsrSession = sessionRole === "CSR";
   const canReviewEndorsements =
@@ -413,6 +409,15 @@ export function EmployeeTreeWorkspace({ allowedRoles, title, description }: Empl
     () => internalChatContacts.find((contact) => contact.id === selectedInternalChatContactId) ?? null,
     [internalChatContacts, selectedInternalChatContactId],
   );
+  const focusedCsrEmployee = useMemo(() => {
+    if (!focusedCsrEmployeeId) {
+      return null;
+    }
+
+    return employeeNodes.find((employee) => employee.id === focusedCsrEmployeeId && employee.role === "CSR") ?? null;
+  }, [employeeNodes, focusedCsrEmployeeId]);
+  const graphSelectedCustomerId =
+    selectedNode?.kind === "customer" || selectedNode?.kind === "case" ? selectedNode.customer.id : focusedCustomerId;
 
   const refreshTreeForCurrentUser = useCallback(
     async (accessToken: string, user: ReadyState["user"], preferredCaseId?: string) => {
@@ -421,11 +426,6 @@ export function EmployeeTreeWorkspace({ allowedRoles, title, description }: Empl
         user,
         tree,
       };
-
-      setExpandedNodes((current) => ({
-        ...buildDefaultExpandedTree(tree.data),
-        ...current,
-      }));
 
       setSelectedNode((currentSelectedNode) => {
         if (preferredCaseId) {
@@ -508,7 +508,6 @@ export function EmployeeTreeWorkspace({ allowedRoles, title, description }: Empl
           tree,
         };
 
-        setExpandedNodes(buildDefaultExpandedTree(tree.data));
         setSelectedNode(pickInitialSelectedNode(tree.data));
         setState({ status: "ready", data: nextState });
       } catch (error) {
@@ -531,12 +530,94 @@ export function EmployeeTreeWorkspace({ allowedRoles, title, description }: Empl
   }, [allowedRoles, router]);
 
   useEffect(() => {
+    if (state.status !== "ready") {
+      if (focusedCsrEmployeeId !== null) {
+        setFocusedCsrEmployeeId(null);
+      }
+      if (focusedCustomerId !== null) {
+        setFocusedCustomerId(null);
+      }
+      return;
+    }
+
+    if (state.data.user.role === "CSR") {
+      if (focusedCsrEmployeeId !== state.data.tree.scope.viewerId) {
+        setFocusedCsrEmployeeId(state.data.tree.scope.viewerId);
+      }
+      return;
+    }
+
+    if (
+      focusedCsrEmployeeId &&
+      !state.data.tree.data.some((employee) => employee.id === focusedCsrEmployeeId && employee.role === "CSR")
+    ) {
+      setFocusedCsrEmployeeId(null);
+    }
+  }, [focusedCsrEmployeeId, focusedCustomerId, state]);
+
+  useEffect(() => {
+    if (!focusedCsrEmployee) {
+      if (focusedCustomerId !== null) {
+        setFocusedCustomerId(null);
+      }
+      return;
+    }
+
+    let nextCustomerId = focusedCustomerId;
+    if (selectedNode?.employee.id === focusedCsrEmployee.id) {
+      if (selectedNode.kind === "customer" || selectedNode.kind === "case") {
+        nextCustomerId = selectedNode.customer.id;
+      }
+    }
+
+    if (!nextCustomerId || !focusedCsrEmployee.customers.some((customer) => customer.id === nextCustomerId)) {
+      nextCustomerId = focusedCsrEmployee.customers[0]?.id ?? null;
+    }
+
+    if (nextCustomerId !== focusedCustomerId) {
+      setFocusedCustomerId(nextCustomerId);
+    }
+  }, [focusedCsrEmployee, focusedCustomerId, selectedNode]);
+
+  const handleSelectEmployeeNode = useCallback((employee: EmployeeTreeEmployee) => {
+    setSelectedNode({ kind: "employee", employee });
+    if (employee.role === "CSR") {
+      setFocusedCsrEmployeeId(employee.id);
+      setFocusedCustomerId(employee.customers[0]?.id ?? null);
+    }
+  }, []);
+
+  const handleSelectCustomerNode = useCallback(
+    (employee: EmployeeTreeEmployee, customer: EmployeeTreeCustomer) => {
+      setSelectedNode({ kind: "customer", employee, customer });
+      if (employee.role === "CSR") {
+        setFocusedCsrEmployeeId(employee.id);
+        setFocusedCustomerId(customer.id);
+      }
+    },
+    [],
+  );
+
+  const handleSelectCaseNode = useCallback(
+    (employee: EmployeeTreeEmployee, customer: EmployeeTreeCustomer, caseItem: EmployeeTreeCase) => {
+      setSelectedNode({ kind: "case", employee, customer, caseItem });
+      if (employee.role === "CSR") {
+        setFocusedCsrEmployeeId(employee.id);
+        setFocusedCustomerId(customer.id);
+      }
+    },
+    [],
+  );
+
+  useEffect(() => {
     if (!isCsrSession || !selectedCaseId) {
       setCaseMetaCaseId(null);
       setCaseMetaLoading(false);
       setCaseMetaError(null);
       setCaseTags([]);
       setSelectedTagIds([]);
+      setCustomTagDraft("");
+      setCustomTagDraftList([]);
       setInternalNotes([]);
       setStatusDraft("Open");
       setPriorityDraft("Medium");
@@ -565,6 +646,8 @@ export function EmployeeTreeWorkspace({ allowedRoles, title, description }: Empl
 
         setCaseTags(details.tags);
         setSelectedTagIds(details.tags.filter((tag) => tag.selected).map((tag) => tag.id));
+        setCustomTagDraft("");
+        setCustomTagDraftList([]);
         setInternalNotes(details.internalNotes);
         setStatusDraft(details.case.status);
         setPriorityDraft(details.case.priority);
@@ -985,13 +1068,6 @@ export function EmployeeTreeWorkspace({ allowedRoles, title, description }: Empl
     return state.data.tree.scope;
   }, [state]);
 
-  const toggleNode = (nodeId: string) => {
-    setExpandedNodes((current) => ({
-      ...current,
-      [nodeId]: !current[nodeId],
-    }));
-  };
-
   const handleSaveCaseFields = async () => {
     if (state.status !== "ready" || state.data.user.role !== "CSR" || !selectedCaseId) {
       return;
@@ -1025,6 +1101,65 @@ export function EmployeeTreeWorkspace({ allowedRoles, title, description }: Empl
     }
   };
 
+  const appendCustomTagDraft = useCallback((rawValue: string) => {
+    const normalized = rawValue.trim().replace(/\s+/g, " ");
+    if (!normalized) {
+      return false;
+    }
+
+    if (normalized.length < 2 || normalized.length > 40) {
+      setActionFeedback({
+        type: "error",
+        message: "Custom tag names must be 2-40 characters after trimming.",
+      });
+      return false;
+    }
+
+    const normalizedKey = normalized.toLowerCase();
+    const existsInDraft = customTagDraftList.some((entry) => entry.toLowerCase() === normalizedKey);
+    const existingTag = caseTags.find((tag) => tag.name.toLowerCase() === normalizedKey);
+
+    if (existsInDraft) {
+      setActionFeedback({
+        type: "error",
+        message: "That custom tag is already in the draft list.",
+      });
+      return false;
+    }
+
+    if (existingTag) {
+      if (selectedTagIds.includes(existingTag.id)) {
+        setActionFeedback({
+          type: "error",
+          message: "That shared tag is already selected.",
+        });
+        return false;
+      }
+
+      setSelectedTagIds((current) => [...current, existingTag.id]);
+      setCustomTagDraft("");
+      setActionFeedback(null);
+      return true;
+    }
+
+    if (customTagDraftList.length >= 10) {
+      setActionFeedback({
+        type: "error",
+        message: "You can add up to 10 custom tags per save.",
+      });
+      return false;
+    }
+
+    setCustomTagDraftList((current) => [...current, normalized]);
+    setCustomTagDraft("");
+    setActionFeedback(null);
+    return true;
+  }, [caseTags, customTagDraftList, selectedTagIds]);
+
+  const handleAddCustomTagDraft = () => {
+    appendCustomTagDraft(customTagDraft);
+  };
+
   const handleSaveTags = async () => {
     if (state.status !== "ready" || state.data.user.role !== "CSR" || !selectedCaseId) {
       return;
@@ -1039,9 +1174,54 @@ export function EmployeeTreeWorkspace({ allowedRoles, title, description }: Empl
     setSavingTags(true);
     setActionFeedback(null);
     try {
-      const tags = await updateCaseTags(accessToken, selectedCaseId, selectedTagIds);
+      const normalizedPendingDraft = customTagDraft.trim().replace(/\s+/g, " ");
+      let nextTagIds = selectedTagIds;
+      let nextCustomTagNames = customTagDraftList;
+
+      if (normalizedPendingDraft) {
+        if (normalizedPendingDraft.length < 2 || normalizedPendingDraft.length > 40) {
+          setActionFeedback({
+            type: "error",
+            message: "Custom tag names must be 2-40 characters after trimming.",
+          });
+          return;
+        }
+
+        const normalizedKey = normalizedPendingDraft.toLowerCase();
+        if (nextCustomTagNames.some((entry) => entry.toLowerCase() === normalizedKey)) {
+          setActionFeedback({
+            type: "error",
+            message: "That custom tag is already in the draft list.",
+          });
+          return;
+        }
+
+        const matchingExistingTag = caseTags.find((tag) => tag.name.toLowerCase() === normalizedKey);
+        if (matchingExistingTag) {
+          if (!nextTagIds.includes(matchingExistingTag.id)) {
+            nextTagIds = [...nextTagIds, matchingExistingTag.id];
+          }
+        } else {
+          if (nextCustomTagNames.length >= 10) {
+            setActionFeedback({
+              type: "error",
+              message: "You can add up to 10 custom tags per save.",
+            });
+            return;
+          }
+
+          nextCustomTagNames = [...nextCustomTagNames, normalizedPendingDraft];
+        }
+      }
+
+      const tags = await updateCaseTags(accessToken, selectedCaseId, {
+        tagIds: nextTagIds,
+        customTagNames: nextCustomTagNames,
+      });
       setCaseTags(tags);
       setSelectedTagIds(tags.filter((tag) => tag.selected).map((tag) => tag.id));
+      setCustomTagDraft("");
+      setCustomTagDraftList([]);
       setActionFeedback({ type: "success", message: "Case tags updated." });
     } catch (error) {
       setActionFeedback({
@@ -1093,7 +1273,10 @@ export function EmployeeTreeWorkspace({ allowedRoles, title, description }: Empl
     }
 
     if (!selectedEndorseTargetId) {
-      setEndorsementFeedback({ type: "error", message: "Select a manager or executive to endorse this case." });
+      setEndorsementFeedback({
+        type: "error",
+        message: "Select a manager or executive to review this escalation request.",
+      });
       return;
     }
 
@@ -1126,11 +1309,14 @@ export function EmployeeTreeWorkspace({ allowedRoles, title, description }: Empl
 
       await refreshTreeForCurrentUser(accessToken, state.data.user, selectedCaseId);
       await refreshCaseWorkflow(accessToken, selectedCaseId);
-      setEndorsementFeedback({ type: "success", message: "Case endorsed successfully." });
+      setEndorsementFeedback({
+        type: "success",
+        message: "Escalation request submitted successfully. Assignment remains unchanged unless you reassign it separately.",
+      });
     } catch (error) {
       setEndorsementFeedback({
         type: "error",
-        message: error instanceof Error ? error.message : "Failed to endorse case.",
+        message: error instanceof Error ? error.message : "Failed to submit escalation request.",
       });
     } finally {
       setSendingEndorsement(false);
@@ -1151,7 +1337,8 @@ export function EmployeeTreeWorkspace({ allowedRoles, title, description }: Empl
     setDecidingEndorsementId(endorsementId);
     setEndorsementFeedback(null);
     try {
-      const updatedEndorsement = await decideCaseEndorsement(accessToken, endorsementId, decision);
+      const decisionResult = await decideCaseEndorsement(accessToken, endorsementId, decision);
+      const updatedEndorsement = decisionResult.endorsement;
 
       setWorkflowDetails((current) => {
         if (!current) {
@@ -1168,7 +1355,7 @@ export function EmployeeTreeWorkspace({ allowedRoles, title, description }: Empl
       await refreshTreeForCurrentUser(accessToken, state.data.user, selectedCaseId);
       setEndorsementFeedback({
         type: "success",
-        message: `Endorsement ${decision.toLowerCase()} successfully.`,
+        message: `Escalation request ${decision.toLowerCase()} successfully. Assignment unchanged: ${decisionResult.caseAssignmentChanged ? "No" : "Yes"}.`,
       });
     } catch (error) {
       setEndorsementFeedback({
@@ -1446,12 +1633,15 @@ export function EmployeeTreeWorkspace({ allowedRoles, title, description }: Empl
 
         <Divider />
         <Typography variant="subtitle1">Escalation Workflow</Typography>
+        <Typography variant="body2" color="text.secondary">
+          Approval only. Approving or rejecting an escalation request does not reassign the case.
+        </Typography>
 
         {workflowLoading && isSelectedWorkflowCurrent && (
           <Stack direction="row" spacing={1} alignItems="center">
             <CircularProgress size={18} />
             <Typography variant="body2" color="text.secondary">
-              Loading endorsements and reassignment controls...
+              Loading escalation history and reassignment controls...
             </Typography>
           </Stack>
         )}
@@ -1473,7 +1663,7 @@ export function EmployeeTreeWorkspace({ allowedRoles, title, description }: Empl
               <Chip
                 size="small"
                 variant="outlined"
-                label={`Pending Endorsements: ${workflowDetails.case.pendingEndorsementCount}`}
+                label={`Pending Escalations: ${workflowDetails.case.pendingEndorsementCount}`}
               />
               {workflowDetails.endorsements[0] && (
                 <Chip
@@ -1485,10 +1675,10 @@ export function EmployeeTreeWorkspace({ allowedRoles, title, description }: Empl
               )}
             </Stack>
 
-            <Typography variant="subtitle2">Endorsement Timeline</Typography>
+            <Typography variant="subtitle2">Escalation Timeline</Typography>
             {workflowEndorsements.length === 0 && (
               <Typography variant="body2" color="text.secondary">
-                No endorsements recorded for this case.
+                No escalation requests recorded for this case.
               </Typography>
             )}
 
@@ -1527,7 +1717,10 @@ export function EmployeeTreeWorkspace({ allowedRoles, title, description }: Empl
             {isCsrSession && (
               <>
                 <Divider />
-                <Typography variant="subtitle2">Endorse Case</Typography>
+                <Typography variant="subtitle2">Request Escalation Approval</Typography>
+                <Typography variant="caption" color="text.secondary">
+                  Approval does not reassign this case.
+                </Typography>
                 <FormControl
                   fullWidth
                   size="small"
@@ -1558,11 +1751,11 @@ export function EmployeeTreeWorkspace({ allowedRoles, title, description }: Empl
                     !selectedEndorseTargetId
                   }
                 >
-                  {sendingEndorsement ? "Endorsing..." : "Endorse Upward"}
+                  {sendingEndorsement ? "Submitting..." : "Submit Escalation Request"}
                 </Button>
                 {!canEndorseCase && workflowDetails.case.hasPendingEndorsement && (
                   <Typography variant="caption" color="text.secondary">
-                    A pending endorsement already exists for this case.
+                    A pending escalation request already exists for this case.
                   </Typography>
                 )}
               </>
@@ -1571,7 +1764,10 @@ export function EmployeeTreeWorkspace({ allowedRoles, title, description }: Empl
             {canReviewEndorsements && pendingEndorsementsForViewer.length > 0 && (
               <>
                 <Divider />
-                <Typography variant="subtitle2">Pending Endorsements For You</Typography>
+                <Typography variant="subtitle2">Pending Escalation Requests For You</Typography>
+                <Typography variant="caption" color="text.secondary">
+                  Approval does not reassign this case. Use the separate reassignment action if needed.
+                </Typography>
                 <Stack spacing={1}>
                   {pendingEndorsementsForViewer.map((endorsement) => (
                     <Box
@@ -1597,7 +1793,7 @@ export function EmployeeTreeWorkspace({ allowedRoles, title, description }: Empl
                           disabled={decidingEndorsementId === endorsement.id}
                           onClick={() => handleDecideEndorsement(endorsement.id, "Accepted")}
                         >
-                          Accept
+                          Approve
                         </Button>
                         <Button
                           size="small"
@@ -1618,7 +1814,10 @@ export function EmployeeTreeWorkspace({ allowedRoles, title, description }: Empl
             {canReassignCases && (
               <>
                 <Divider />
-                <Typography variant="subtitle2">Case Reassignment</Typography>
+                <Typography variant="subtitle2">Optional Reassignment (Separate Action)</Typography>
+                <Typography variant="caption" color="text.secondary">
+                  Use this only if you want to transfer ownership after reviewing the escalation request.
+                </Typography>
                 <FormControl fullWidth size="small" disabled={reassigningCase || workflowLoading}>
                   <InputLabel id="reassign-target-select-label">Assign To CSR</InputLabel>
                   <Select
@@ -1716,6 +1915,9 @@ export function EmployeeTreeWorkspace({ allowedRoles, title, description }: Empl
 
             <Divider />
             <Typography variant="subtitle2">Manual Tags</Typography>
+            <Typography variant="caption" color="text.secondary">
+              Select existing tags or stage new shared tags to create during save.
+            </Typography>
             <FormControl fullWidth size="small">
               <InputLabel id="case-tags-select-label">Tags</InputLabel>
               <Select
@@ -1744,6 +1946,48 @@ export function EmployeeTreeWorkspace({ allowedRoles, title, description }: Empl
                 ))}
               </Select>
             </FormControl>
+
+            <Stack direction={{ xs: "column", sm: "row" }} spacing={1}>
+              <TextField
+                size="small"
+                fullWidth
+                label="Custom Tag Name"
+                value={customTagDraft}
+                onChange={(event) => setCustomTagDraft(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter") {
+                    event.preventDefault();
+                    handleAddCustomTagDraft();
+                  }
+                }}
+                placeholder="Type a shared tag and press Enter"
+                disabled={savingTags || caseMetaLoading || !isSelectedCaseMetaCurrent}
+              />
+              <Button
+                variant="outlined"
+                onClick={handleAddCustomTagDraft}
+                disabled={savingTags || caseMetaLoading || !isSelectedCaseMetaCurrent}
+              >
+                Add Custom Tag
+              </Button>
+            </Stack>
+
+            {customTagDraftList.length > 0 && (
+              <Stack direction="row" spacing={0.75} useFlexGap flexWrap="wrap">
+                {customTagDraftList.map((tagName) => (
+                  <Chip
+                    key={tagName}
+                    size="small"
+                    label={tagName}
+                    color="warning"
+                    variant="outlined"
+                    onDelete={() =>
+                      setCustomTagDraftList((current) => current.filter((entry) => entry !== tagName))
+                    }
+                  />
+                ))}
+              </Stack>
+            )}
 
             {selectedTags.length > 0 && (
               <Stack direction="row" spacing={0.75} useFlexGap flexWrap="wrap">
@@ -1984,9 +2228,9 @@ export function EmployeeTreeWorkspace({ allowedRoles, title, description }: Empl
 
         <Stack direction={{ xs: "column", lg: "row" }} spacing={2}>
           <Paper elevation={1} sx={{ p: 2, flex: 1.3 }}>
-            <Typography variant="h6">Tree View</Typography>
+            <Typography variant="h6">Skill Tree Graph</Typography>
             <Typography variant="body2" color="text.secondary" sx={{ mb: 1.5 }}>
-              Employee to customer to case hierarchy.
+              Graph-first employee hierarchy with focused CSR radial case rings.
             </Typography>
             <Divider sx={{ mb: 1.5 }} />
 
@@ -1996,232 +2240,54 @@ export function EmployeeTreeWorkspace({ allowedRoles, title, description }: Empl
               <Alert severity="info">No assigned records are currently available in your scope.</Alert>
             )}
 
-            {state.status === "ready" &&
-              state.data.tree.data.map((employee) => {
-                const employeeNodeId = `employee:${employee.id}`;
-                const isEmployeeExpanded = expandedNodes[employeeNodeId] ?? false;
-                const isEmployeeSelected =
-                  selectedNode?.kind === "employee" && selectedNode.employee.id === employee.id;
+            {state.status === "ready" && isCsrSession && focusedCsrEmployee && (
+              <SkillTreeCanvas
+                employee={focusedCsrEmployee}
+                activeCustomerId={graphSelectedCustomerId}
+                selectedEmployeeId={selectedEmployeeId}
+                selectedCustomerId={graphSelectedCustomerId}
+                selectedCaseId={selectedCaseId}
+                onSelectEmployee={handleSelectEmployeeNode}
+                onSelectCustomer={handleSelectCustomerNode}
+                onSelectCase={handleSelectCaseNode}
+              />
+            )}
 
-                return (
-                  <Box key={employee.id} sx={{ mb: 1.5 }}>
-                    <Button
-                      fullWidth
-                      variant={isEmployeeSelected ? "contained" : "text"}
-                      color={isEmployeeSelected ? "primary" : "inherit"}
-                      onClick={() => setSelectedNode({ kind: "employee", employee })}
-                      sx={{ justifyContent: "flex-start", textTransform: "none", gap: 1 }}
-                    >
-                      {employee.customers.length > 0 && (
-                        <Box
-                          component="span"
-                          onClick={(event) => {
-                            event.stopPropagation();
-                            toggleNode(employeeNodeId);
-                          }}
-                          sx={{
-                            fontFamily: "monospace",
-                            fontWeight: 700,
-                            px: 0.5,
-                            borderRadius: 0.5,
-                            border: "1px solid #CBD5E1",
-                            minWidth: "1.6rem",
-                            textAlign: "center",
-                          }}
-                        >
-                          {isEmployeeExpanded ? "-" : "+"}
-                        </Box>
-                      )}
-                      <Typography component="span" sx={{ fontWeight: 600 }}>
-                        {employee.name ?? employee.email}
-                      </Typography>
-                      <Chip size="small" label={employee.role} />
-                      {employee.role === "CSR" && (
-                        <>
-                          <Chip size="small" variant="outlined" label={`Ongoing ${employee.metrics.ongoingCases}`} />
-                          <Chip size="small" variant="outlined" label={`Resolved ${employee.metrics.resolvedToday}`} />
-                          <Chip
-                            size="small"
-                            variant="outlined"
-                            label={`CSAT ${formatCustomerSatisfaction(employee.metrics.customerSatisfaction)}`}
-                          />
-                        </>
-                      )}
-                    </Button>
+            {state.status === "ready" && !isCsrSession && (
+              <Stack spacing={1.5}>
+                <HierarchyCanvas
+                  employees={employeeNodes}
+                  scope={state.data.tree.scope}
+                  selectedEmployeeId={selectedEmployeeId}
+                  focusedCsrId={focusedCsrEmployeeId}
+                  onSelectEmployee={handleSelectEmployeeNode}
+                />
 
-                    {isEmployeeExpanded &&
-                      employee.customers.map((customer) => {
-                        const customerNodeId = `customer:${employee.id}:${customer.id}`;
-                        const isCustomerExpanded = expandedNodes[customerNodeId] ?? false;
-                        const isCustomerSelected =
-                          selectedNode?.kind === "customer" &&
-                          selectedNode.employee.id === employee.id &&
-                          selectedNode.customer.id === customer.id;
-
-                        return (
-                          <Box key={customer.id} sx={{ pl: 3, mt: 1 }}>
-                            <Button
-                              fullWidth
-                              variant={isCustomerSelected ? "contained" : "text"}
-                              color={isCustomerSelected ? "secondary" : "inherit"}
-                              onClick={() =>
-                                setSelectedNode({
-                                  kind: "customer",
-                                  employee,
-                                  customer,
-                                })
-                              }
-                              sx={{ justifyContent: "flex-start", textTransform: "none", gap: 1 }}
-                            >
-                              {customer.cases.length > 0 && (
-                                <Box
-                                  component="span"
-                                  onClick={(event) => {
-                                    event.stopPropagation();
-                                    toggleNode(customerNodeId);
-                                  }}
-                                  sx={{
-                                    fontFamily: "monospace",
-                                    fontWeight: 700,
-                                    px: 0.5,
-                                    borderRadius: 0.5,
-                                    border: "1px solid #CBD5E1",
-                                    minWidth: "1.6rem",
-                                    textAlign: "center",
-                                  }}
-                                >
-                                  {isCustomerExpanded ? "-" : "+"}
-                                </Box>
-                              )}
-                              <Typography component="span">{customer.company}</Typography>
-                              <Chip size="small" label={`${customer.cases.length} case(s)`} />
-                            </Button>
-
-                            {isCustomerExpanded && (
-                              <Box sx={{ pl: 3, mt: 1 }}>
-                                <Typography variant="caption" color="text.secondary">
-                                  Priority Semicircle Layout
-                                </Typography>
-
-                                {PRIORITY_RING_LAYOUT.map((ring) => {
-                                  const casesInRing = customer.cases.filter(
-                                    (caseItem) => caseItem.priority === ring.priority,
-                                  );
-
-                                  return (
-                                    <Box
-                                      key={`${customer.id}-${ring.priority}`}
-                                      sx={{
-                                        mt: 1,
-                                        mx: "auto",
-                                        width: ring.width,
-                                        border: `2px solid ${priorityStyleMap[ring.priority].border}`,
-                                        borderBottom: "none",
-                                        borderRadius: "999px 999px 0 0",
-                                        backgroundColor: priorityStyleMap[ring.priority].background,
-                                        p: 1.25,
-                                      }}
-                                    >
-                                      <Stack
-                                        direction="row"
-                                        justifyContent="space-between"
-                                        alignItems="center"
-                                        sx={{ mb: 0.75 }}
-                                      >
-                                        <Typography variant="caption" sx={{ fontWeight: 600 }}>
-                                          {ring.label}
-                                        </Typography>
-                                        <Chip size="small" label={`${casesInRing.length}`} />
-                                      </Stack>
-
-                                      {casesInRing.length === 0 && (
-                                        <Typography variant="caption" color="text.secondary">
-                                          No cases on this arc.
-                                        </Typography>
-                                      )}
-
-                                      {casesInRing.length > 0 && (
-                                        <Stack direction="row" spacing={0.75} useFlexGap flexWrap="wrap">
-                                          {casesInRing.map((caseItem) => {
-                                            const isCaseSelected =
-                                              selectedNode?.kind === "case" &&
-                                              selectedNode.employee.id === employee.id &&
-                                              selectedNode.customer.id === customer.id &&
-                                              selectedNode.caseItem.id === caseItem.id;
-
-                                            const caseStyle = getCaseVisualStyle(caseItem);
-
-                                            return (
-                                              <Button
-                                                key={caseItem.id}
-                                                onClick={() =>
-                                                  setSelectedNode({
-                                                    kind: "case",
-                                                    employee,
-                                                    customer,
-                                                    caseItem,
-                                                  })
-                                                }
-                                                variant={isCaseSelected ? "contained" : "outlined"}
-                                                color={isCaseSelected ? "info" : "inherit"}
-                                                size="small"
-                                                sx={{
-                                                  textTransform: "none",
-                                                  borderColor: caseStyle.border,
-                                                  backgroundColor: isCaseSelected
-                                                    ? undefined
-                                                    : caseStyle.background,
-                                                  "&:hover": {
-                                                    borderColor: caseStyle.border,
-                                                    backgroundColor: isCaseSelected
-                                                      ? undefined
-                                                      : caseStyle.background,
-                                                  },
-                                                }}
-                                              >
-                                                <Stack direction="row" spacing={0.5} alignItems="center">
-                                                  <Typography component="span" sx={{ fontSize: "0.78rem" }}>
-                                                    {caseItem.title}
-                                                  </Typography>
-                                                  <Chip
-                                                    size="small"
-                                                    variant="outlined"
-                                                    label={caseItem.status}
-                                                    sx={{ height: 20 }}
-                                                  />
-                                                  {caseItem.hasPendingEndorsement && (
-                                                    <Chip
-                                                      size="small"
-                                                      color="warning"
-                                                      variant="filled"
-                                                      label="Endorsed"
-                                                      sx={{ height: 20 }}
-                                                    />
-                                                  )}
-                                                </Stack>
-                                              </Button>
-                                            );
-                                          })}
-                                        </Stack>
-                                      )}
-                                    </Box>
-                                  );
-                                })}
-                              </Box>
-                            )}
-                          </Box>
-                        );
-                      })}
-                  </Box>
-                );
-              })}
+                {focusedCsrEmployee ? (
+                  <SkillTreeCanvas
+                    employee={focusedCsrEmployee}
+                    activeCustomerId={focusedCustomerId}
+                    selectedEmployeeId={selectedEmployeeId}
+                    selectedCustomerId={graphSelectedCustomerId}
+                    selectedCaseId={selectedCaseId}
+                    onSelectEmployee={handleSelectEmployeeNode}
+                    onSelectCustomer={handleSelectCustomerNode}
+                    onSelectCase={handleSelectCaseNode}
+                  />
+                ) : (
+                  <Alert severity="info">
+                    Select a CSR node in the hierarchy graph to open its focused radial case view.
+                  </Alert>
+                )}
+              </Stack>
+            )}
           </Paper>
 
           <Stack spacing={2} sx={{ flex: 1 }}>
             <Paper elevation={1} sx={{ p: 2 }}>
               <Typography variant="h6">Details Panel</Typography>
               <Typography variant="body2" color="text.secondary" sx={{ mb: 1.5 }}>
-                Click any node in the tree to inspect details.
+                Click any graph node to inspect details.
               </Typography>
               <Divider sx={{ mb: 1.5 }} />
               {renderDetailPane()}

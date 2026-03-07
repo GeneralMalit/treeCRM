@@ -58,6 +58,11 @@ export type ReassignResult = {
   cancelledEndorsementCount: number;
 };
 
+export type EndorsementDecisionResult = {
+  endorsement: CaseWorkflowEndorsement;
+  caseAssignmentChanged: boolean;
+};
+
 const CASE_STATUSES = ["Open", "In Progress", "Resolved", "Dropped"] as const;
 const CASE_PRIORITIES = ["High", "Medium", "Low"] as const;
 const ENDORSEMENT_STATUSES = ["Pending", "Accepted", "Rejected", "Cancelled"] as const;
@@ -218,12 +223,15 @@ function parseCreatedEndorsement(body: unknown): CaseWorkflowEndorsement {
   return parseWorkflowEndorsement(body.data.endorsement);
 }
 
-function parseDecisionEndorsement(body: unknown): CaseWorkflowEndorsement {
-  if (!isRecord(body) || !isRecord(body.data)) {
+function parseDecisionEndorsement(body: unknown): EndorsementDecisionResult {
+  if (!isRecord(body) || !isRecord(body.data) || typeof body.data.caseAssignmentChanged !== "boolean") {
     throw new Error("Unexpected endorsement decision response.");
   }
 
-  return parseWorkflowEndorsement(body.data.endorsement);
+  return {
+    endorsement: parseWorkflowEndorsement(body.data.endorsement),
+    caseAssignmentChanged: body.data.caseAssignmentChanged,
+  };
 }
 
 function parseReassignResult(body: unknown): ReassignResult {
@@ -295,7 +303,7 @@ export async function decideCaseEndorsement(
   accessToken: string,
   endorsementId: string,
   status: EndorsementDecision,
-): Promise<CaseWorkflowEndorsement> {
+): Promise<EndorsementDecisionResult> {
   const rawBody = await request(`/employee/endorsements/${endorsementId}`, accessToken, {
     method: "PATCH",
     body: { status },
