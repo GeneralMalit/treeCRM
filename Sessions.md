@@ -393,20 +393,20 @@ This checklist tracks the completion of each TreeCRM development session. Each s
 **Objective:** Complete production deployment and validate the hosted stack.
 
 ### Tasks
-- [ ] Authenticate Vercel CLI locally (`vercel login`) and verify account access (`vercel whoami`).
-- [ ] Deploy frontend to Vercel.
-- [ ] Set frontend production environment variable `NEXT_PUBLIC_API_URL` to the deployed backend URL.
-- [ ] Prepare Render access (CLI or dashboard), then deploy backend to Render.
-- [ ] Configure backend production environment variables on Render (`PORT`, `FRONTEND_ORIGIN`, `SUPABASE_URL`, `SUPABASE_KEY`, `SUPABASE_SERVICE_ROLE_KEY`, `JWT_SECRET`).
-- [ ] Verify deployed backend connectivity (`/health`, `/health/supabase`) against production settings.
-- [ ] Verify live hosted workflows end-to-end:
+- [x] Authenticate Vercel CLI locally (ercel login) and verify account access (ercel whoami).
+- [x] Deploy frontend to Vercel.
+- [x] Set frontend production environment variable NEXT_PUBLIC_API_URL to the deployed backend URL.
+- [x] Prepare Render access (CLI or dashboard), then deploy backend to Render.
+- [x] Configure backend production environment variables on Render (PORT, FRONTEND_ORIGIN, SUPABASE_URL, SUPABASE_KEY, SUPABASE_SERVICE_ROLE_KEY, JWT_SECRET).
+- [x] Verify deployed backend connectivity (/health, /health/supabase) against production settings.
+- [x] Verify live hosted workflows end-to-end:
   - Customer ? CSR ticket workflow
   - Realtime chat
   - Endorsements
   - Reassignments
   - Notifications
   - Customer CSAT capture and metric rollups
-- [ ] Optional hardening follow-up: enable RLS + policies for `public.internal_messages`.
+- [x] Optional hardening follow-up: enable RLS + policies for public.internal_messages.
 
 **Target Outcome:**
 - Frontend and backend deployed successfully
@@ -414,6 +414,11 @@ This checklist tracks the completion of each TreeCRM development session. Each s
 - Live end-to-end workflows validated in production
 - Deployment handoff complete
 
+
+**Summary (March 7, 2026):**
+- Backend now on Render with FRONTEND_ORIGIN matched to the Vercel URL, all env vars configured, and /health + /health/supabase returning status: ok.
+- Frontend lives at https://treecrm-frontend.vercel.app/ with NEXT_PUBLIC_API_URL/NEXT_PUBLIC_SOCKET_URL pointing to the Render backend so auth, chat, endorsement, reassignment, notification, and CSAT flows all work in production.
+- Session 11 also delivered RLS for public.internal_messages as documented in docs/session_11_internal_messages_rls.sql, ensuring internal chats remain limited to employees.
 
 
 **Execution Reminder (MCP First):**
