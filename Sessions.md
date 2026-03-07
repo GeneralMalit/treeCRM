@@ -302,16 +302,33 @@ This checklist tracks the completion of each TreeCRM development session. Each s
 **Objective:** Track performance metrics and display dashboards.
 
 ### Tasks
-- [ ] Calculate CSR metrics (ongoing cases, resolved today, customer satisfaction)
-- [ ] Display CSR metrics in tree nodes
-- [ ] Managers can view team metrics
-- [ ] Executives can view aggregated manager metrics
-- [ ] Update backend API for metrics calculation
+- [x] Calculate CSR metrics (ongoing cases, resolved today, customer satisfaction)
+- [x] Display CSR metrics in tree nodes
+- [x] Managers can view team metrics
+- [x] Executives can view aggregated manager metrics
+- [x] Update backend API for metrics calculation
 
 **Target Outcome:**
 - Performance metrics visible to employees
 - Managers/executives can monitor workloads
 - Metrics update dynamically with case changes
+
+
+**Summary (March 7, 2026):**
+- Extended `GET /employee/tree` to calculate live metrics for each employee node:
+  - `ongoingCases` (Open + In Progress)
+  - `resolvedToday` (Resolved cases updated since UTC day start)
+  - `customerSatisfaction` (temporary proxy: `resolvedCases / (resolvedCases + droppedCases)` as a percentage)
+  - plus supporting totals (`totalCases`, `resolvedCases`, `droppedCases`, `completedCases`)
+- Added CSR metrics directly to tree employee nodes and to the employee details panel.
+- Added manager team-metrics payload + UI display for manager sessions.
+- Added executive/admin manager-aggregate payload + UI rollup, including per-manager cards and unassigned CSR visibility.
+- Added fallback manager-team allocation mode (`derived_balanced_fallback`) when explicit manager-to-CSR assignments are missing, so dashboards still show actionable metrics without manual setup.
+- Follow-up queued for Session 10: replace the proxy customer satisfaction metric with explicit customer CSAT capture (customer submits a 1-5 rating on resolved cases in the portal, stored per case and aggregated per CSR).
+- Updated frontend type-safe tree parsing (`frontend/lib/employeeTree.ts`) for new metrics/team/aggregate structures.
+- Validation completed:
+  - backend `npm run lint` + `npm run build`
+  - frontend `npm run lint` + `npm run build`
 
 ---
 
@@ -322,6 +339,7 @@ This checklist tracks the completion of each TreeCRM development session. Each s
 ### Tasks
 - [ ] Create admin panel for user and role management
 - [ ] Configure tags, priorities, system settings
+- [ ] Implement explicit customer satisfaction capture (1-5 customer rating on resolved tickets) and use it as the source for CSR `customerSatisfaction` metrics
 - [ ] Conduct end-to-end testing:
   - Customer ? CSR workflow
   - Chat

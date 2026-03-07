@@ -54,6 +54,9 @@ import {
   type EmployeeTreeCase,
   type EmployeeTreeCustomer,
   type EmployeeTreeEmployee,
+  type EmployeeTreeScope,
+  type PerformanceMetrics,
+  type TeamMetricsSummary,
 } from "@/lib/employeeTree";
 import {
   fetchEmployeeCaseMessages,
@@ -92,13 +95,7 @@ type ReadyState = {
     name?: string;
   };
   tree: {
-    scope: {
-      viewerId: string;
-      viewerRole: Role;
-      employeeCount: number;
-      customerCount: number;
-      caseCount: number;
-    };
+    scope: EmployeeTreeScope;
     data: EmployeeTreeEmployee[];
   };
 };
@@ -231,6 +228,30 @@ function safeFormatDate(value: string): string {
     dateStyle: "medium",
     timeStyle: "short",
   }).format(parsed);
+}
+
+function formatCustomerSatisfaction(value: number | null): string {
+  if (value === null) {
+    return "N/A";
+  }
+
+  return `${value.toFixed(1)}%`;
+}
+
+function formatAllocationModeLabel(mode: TeamMetricsSummary["allocationMode"]): string {
+  if (mode === "manager_assignment") {
+    return "Manager assignments";
+  }
+
+  if (mode === "derived_balanced_fallback") {
+    return "Balanced fallback";
+  }
+
+  return "No manager mapping";
+}
+
+function renderMetricsSummary(metrics: PerformanceMetrics): string {
+  return `Ongoing ${metrics.ongoingCases} | Resolved Today ${metrics.resolvedToday} | CSAT ${formatCustomerSatisfaction(metrics.customerSatisfaction)}`;
 }
 
 function getEndorsementStatusChipColor(
@@ -1294,6 +1315,10 @@ export function EmployeeTreeWorkspace({ allowedRoles, title, description }: Empl
 
     if (selectedNode.kind === "employee") {
       const caseCount = selectedNode.employee.customers.reduce((total, customer) => total + customer.cases.length, 0);
+      const selectedEmployeeTeamMetrics =
+        summary?.teamMetrics && selectedNode.employee.id === summary.teamMetrics.managerId
+          ? summary.teamMetrics
+          : null;
 
       return (
         <Stack spacing={1.5}>
@@ -1303,6 +1328,26 @@ export function EmployeeTreeWorkspace({ allowedRoles, title, description }: Empl
           <Typography>Role: {selectedNode.employee.role}</Typography>
           <Typography>Customers: {selectedNode.employee.customers.length}</Typography>
           <Typography>Cases: {caseCount}</Typography>
+          <Stack direction={{ xs: "column", sm: "row" }} spacing={1}>
+            <Chip size="small" color="primary" label={`Ongoing: ${selectedNode.employee.metrics.ongoingCases}`} />
+            <Chip
+              size="small"
+              color="success"
+              label={`Resolved Today: ${selectedNode.employee.metrics.resolvedToday}`}
+            />
+            <Chip
+              size="small"
+              color="info"
+              label={`CSAT: ${formatCustomerSatisfaction(selectedNode.employee.metrics.customerSatisfaction)}`}
+            />
+          </Stack>
+          {selectedEmployeeTeamMetrics && (
+            <Alert severity="info">
+              Team Metrics ({formatAllocationModeLabel(selectedEmployeeTeamMetrics.allocationMode)}):{" "}
+              {renderMetricsSummary(selectedEmployeeTeamMetrics.metrics)} | CSRs{" "}
+              {selectedEmployeeTeamMetrics.csrCount}
+            </Alert>
+          )}
           <Typography color="text.secondary">
             Created: {safeFormatDate(selectedNode.employee.createdAt)}
           </Typography>
@@ -1861,10 +1906,68 @@ export function EmployeeTreeWorkspace({ allowedRoles, title, description }: Empl
             )}
 
             {summary && (
-              <Stack direction={{ xs: "column", sm: "row" }} spacing={1}>
-                <Chip size="small" label={`Employees: ${summary.employeeCount}`} />
-                <Chip size="small" label={`Customers: ${summary.customerCount}`} />
-                <Chip size="small" label={`Cases: ${summary.caseCount}`} />
+              <Stack spacing={1}>
+                <Stack direction={{ xs: "column", sm: "row" }} spacing={1}>
+                  <Chip size="small" label={`Employees: ${summary.employeeCount}`} />
+                  <Chip size="small" label={`Customers: ${summary.customerCount}`} />
+                  <Chip size="small" label={`Cases: ${summary.caseCount}`} />
+                </Stack>
+
+                <Stack direction={{ xs: "column", sm: "row" }} spacing={1}>
+                  <Chip size="small" color="primary" label={`Ongoing: ${summary.metrics.ongoingCases}`} />
+                  <Chip size="small" color="success" label={`Resolved Today: ${summary.metrics.resolvedToday}`} />
+                  <Chip
+                    size="small"
+                    color="info"
+                    label={`CSAT: ${formatCustomerSatisfaction(summary.metrics.customerSatisfaction)}`}
+                  />
+                </Stack>
+
+                {summary.teamMetrics && (
+                  <Alert severity="info">
+                    Team Metrics ({formatAllocationModeLabel(summary.teamMetrics.allocationMode)}):{" "}
+                    {renderMetricsSummary(summary.teamMetrics.metrics)} | CSRs {summary.teamMetrics.csrCount}
+                  </Alert>
+                )}
+
+                {summary.managerAggregates && (
+                  <Stack spacing={0.75}>
+                    <Alert severity="warning">
+                      Executive Manager Rollup ({formatAllocationModeLabel(summary.managerAggregates.allocationMode)}
+                      ): {renderMetricsSummary(summary.managerAggregates.metrics)} | Managers{" "}
+                      {summary.managerAggregates.managerCount} | CSRs {summary.managerAggregates.csrCount} | Unassigned{" "}
+                      {summary.managerAggregates.unassignedCsrCount}
+                    </Alert>
+                    {summary.managerAggregates.managers.length > 0 && (
+                      <Stack spacing={0.5}>
+                        {summary.managerAggregates.managers.map((managerAggregate) => (
+                          <Box
+                            key={managerAggregate.managerId}
+                            sx={{
+                              p: 1,
+                              borderRadius: 1,
+                              border: "1px solid #E5E7EB",
+                              backgroundColor: "#F9FAFB",
+                            }}
+                          >
+                            <Typography variant="caption" color="text.secondary">
+                              {managerAggregate.managerName || managerAggregate.managerEmail} | CSRs{" "}
+                              {managerAggregate.csrCount}
+                            </Typography>
+                            <Typography variant="body2">
+                              {renderMetricsSummary(managerAggregate.metrics)}
+                            </Typography>
+                          </Box>
+                        ))}
+                      </Stack>
+                    )}
+                    {summary.managerAggregates.unassignedCsrCount > 0 && (
+                      <Typography variant="caption" color="text.secondary">
+                        Unassigned CSR Pool: {renderMetricsSummary(summary.managerAggregates.unassignedMetrics)}
+                      </Typography>
+                    )}
+                  </Stack>
+                )}
               </Stack>
             )}
 
@@ -1933,6 +2036,17 @@ export function EmployeeTreeWorkspace({ allowedRoles, title, description }: Empl
                         {employee.name ?? employee.email}
                       </Typography>
                       <Chip size="small" label={employee.role} />
+                      {employee.role === "CSR" && (
+                        <>
+                          <Chip size="small" variant="outlined" label={`Ongoing ${employee.metrics.ongoingCases}`} />
+                          <Chip size="small" variant="outlined" label={`Resolved ${employee.metrics.resolvedToday}`} />
+                          <Chip
+                            size="small"
+                            variant="outlined"
+                            label={`CSAT ${formatCustomerSatisfaction(employee.metrics.customerSatisfaction)}`}
+                          />
+                        </>
+                      )}
                     </Button>
 
                     {isEmployeeExpanded &&

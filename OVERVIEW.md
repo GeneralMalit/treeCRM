@@ -341,7 +341,8 @@ CSR reply -> Customer sees message instantly
 ## Current Risks & Dependencies
 - RLS policies for the Session 3 public tables remain a planned hardening task and are still pending.
 - Session 6 smoke test reliability can be impacted by Supabase email-rate limits when creating multiple fresh auth users quickly.
-- Next dependency for roadmap alignment is Session 9 (metrics and dashboards), now that Session 8 escalation workflows are complete.
+- Next dependency for roadmap alignment is Session 10 (admin panel, deployment, and RLS hardening), now that Session 9 metrics and dashboards are complete.
+- `customerSatisfaction` currently uses a proxy (`Resolved / (Resolved + Dropped)` percentage) until explicit customer ratings are captured.
 
 ## Performance Metrics
 Managers and executives track CSR metrics:
@@ -350,6 +351,14 @@ Managers and executives track CSR metrics:
 - customer satisfaction score
 
 Metrics are surfaced in employee nodes.
+
+**Status (March 7, 2026):** Session 9 metrics and dashboard scope is now live.
+- Backend `/employee/tree` now returns role-scoped performance metrics for each employee node (`ongoingCases`, `resolvedToday`, `customerSatisfaction`, and supporting totals).
+- CSR nodes in the tree now surface metrics directly, with matching detail-panel visibility.
+- Manager sessions now include team metrics rollups.
+- Executive/Admin sessions now include manager aggregate rollups, per-manager metric cards, and unassigned-CSR visibility.
+- Customer satisfaction is currently computed as a resolved-vs-closed percentage proxy (`Resolved / (Resolved + Dropped)` percentage).
+- Next coding-session follow-up: add customer CSAT capture in the portal (1-5 rating after a case is resolved), persist rating per case, and switch dashboards to aggregate real customer ratings per CSR.
 
 ## End Goal
 TreeCRM aims to be a complete support management platform that merges ticketing simplicity with visual organizational monitoring.

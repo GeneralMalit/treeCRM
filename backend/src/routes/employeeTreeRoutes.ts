@@ -14,6 +14,7 @@ type UserRow = {
   email: string;
   name: string | null;
   role: Role;
+  manager_id: string | null;
   created_at: string;
 };
 
@@ -65,12 +66,50 @@ type EndorsementRow = {
   created_at: string;
 };
 
+type PerformanceMetrics = {
+  ongoingCases: number;
+  resolvedToday: number;
+  customerSatisfaction: number | null;
+  totalCases: number;
+  resolvedCases: number;
+  droppedCases: number;
+  completedCases: number;
+};
+
+type ManagerTeamAllocationMode = "manager_assignment" | "derived_balanced_fallback" | "none";
+
+type TeamMetricsSummary = {
+  managerId: string;
+  csrCount: number;
+  allocationMode: ManagerTeamAllocationMode;
+  metrics: PerformanceMetrics;
+};
+
+type ManagerAggregateSummary = {
+  managerId: string;
+  managerName: string | null;
+  managerEmail: string;
+  csrCount: number;
+  metrics: PerformanceMetrics;
+};
+
+type ManagerAggregateScope = {
+  allocationMode: ManagerTeamAllocationMode;
+  managerCount: number;
+  csrCount: number;
+  unassignedCsrCount: number;
+  metrics: PerformanceMetrics;
+  unassignedMetrics: PerformanceMetrics;
+  managers: ManagerAggregateSummary[];
+};
+
 const STATUS_VALUES = ["Open", "In Progress", "Resolved", "Dropped"] as const;
 const PRIORITY_VALUES = ["High", "Medium", "Low"] as const;
 const ENDORSEMENT_STATUS_VALUES = ["Pending", "Accepted", "Rejected", "Cancelled"] as const;
 const ENDORSEMENT_DECISION_VALUES = ["Accepted", "Rejected"] as const;
 const ENDORSEMENT_TARGET_ROLES: Role[] = ["Manager", "Executive"];
 const CASE_REASSIGN_ROLES: Role[] = ["Manager", "Executive", "Admin"];
+const ONGOING_CASE_STATUSES: CaseStatus[] = ["Open", "In Progress"];
 
 const VISIBLE_EMPLOYEE_ROLES: Record<"CSR" | "Manager" | "Executive" | "Admin", Role[]> = {
   CSR: ["CSR"],
@@ -111,6 +150,7 @@ function toUserRows(rows: unknown[]): UserRow[] {
         typeof row.email === "string" &&
         isRole(row.role) &&
         typeof row.created_at === "string" &&
+        (typeof row.manager_id === "string" || row.manager_id === null || typeof row.manager_id === "undefined") &&
         (typeof row.name === "string" || row.name === null)
       );
     })
@@ -119,6 +159,7 @@ function toUserRows(rows: unknown[]): UserRow[] {
       email: String(row.email),
       name: row.name === null ? null : String(row.name),
       role: row.role as Role,
+      manager_id: row.manager_id === null || typeof row.manager_id === "undefined" ? null : String(row.manager_id),
       created_at: String(row.created_at),
     }));
 }
@@ -281,6 +322,180 @@ function getPrioritySortWeight(priority: CasePriority): number {
     default:
       return 99;
   }
+}
+
+function getStartOfUtcDayEpoch(now = new Date()): number {
+  return Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), 0, 0, 0, 0);
+}
+
+function roundToSingleDecimal(value: number): number {
+  return Math.round(value * 10) / 10;
+}
+
+function buildPerformanceMetrics(caseItems: CaseRow[], resolvedTodayThresholdEpoch: number): PerformanceMetrics {
+  let ongoingCases = 0;
+  let resolvedToday = 0;
+  let resolvedCases = 0;
+  let droppedCases = 0;
+
+  for (const caseItem of caseItems) {
+    if (ONGOING_CASE_STATUSES.includes(caseItem.status)) {
+      ongoingCases += 1;
+    }
+
+    if (caseItem.status === "Resolved") {
+      resolvedCases += 1;
+      const updatedEpoch = Date.parse(caseItem.updated_at);
+      if (!Number.isNaN(updatedEpoch) && updatedEpoch >= resolvedTodayThresholdEpoch) {
+        resolvedToday += 1;
+      }
+      continue;
+    }
+
+    if (caseItem.status === "Dropped") {
+      droppedCases += 1;
+    }
+  }
+
+  const completedCases = resolvedCases + droppedCases;
+  return {
+    ongoingCases,
+    resolvedToday,
+    customerSatisfaction:
+      completedCases > 0 ? roundToSingleDecimal((resolvedCases / completedCases) * 100) : null,
+    totalCases: caseItems.length,
+    resolvedCases,
+    droppedCases,
+    completedCases,
+  };
+}
+
+function aggregatePerformanceMetrics(metricRows: PerformanceMetrics[]): PerformanceMetrics {
+  const totals = metricRows.reduce(
+    (accumulator, metrics) => {
+      accumulator.ongoingCases += metrics.ongoingCases;
+      accumulator.resolvedToday += metrics.resolvedToday;
+      accumulator.totalCases += metrics.totalCases;
+      accumulator.resolvedCases += metrics.resolvedCases;
+      accumulator.droppedCases += metrics.droppedCases;
+      accumulator.completedCases += metrics.completedCases;
+      return accumulator;
+    },
+    {
+      ongoingCases: 0,
+      resolvedToday: 0,
+      totalCases: 0,
+      resolvedCases: 0,
+      droppedCases: 0,
+      completedCases: 0,
+    },
+  );
+
+  return {
+    ...totals,
+    customerSatisfaction:
+      totals.completedCases > 0
+        ? roundToSingleDecimal((totals.resolvedCases / totals.completedCases) * 100)
+        : null,
+  };
+}
+
+function getUserSortLabel(user: { name: string | null; email: string }): string {
+  return (user.name ?? user.email).trim().toLowerCase();
+}
+
+function buildManagerCsrAssignments(
+  managers: UserRow[],
+  csrs: UserRow[],
+  csrMetricsById: Map<string, PerformanceMetrics>,
+): {
+  mode: ManagerTeamAllocationMode;
+  csrIdsByManagerId: Map<string, string[]>;
+  unassignedCsrIds: string[];
+} {
+  const managerIds = new Set(managers.map((manager) => manager.id));
+  const csrIdsByManagerId = new Map<string, string[]>(
+    managers.map((manager) => [manager.id, [] as string[]]),
+  );
+  const unassignedCsrIds: string[] = [];
+
+  for (const csr of csrs) {
+    if (csr.manager_id && managerIds.has(csr.manager_id)) {
+      const current = csrIdsByManagerId.get(csr.manager_id) ?? [];
+      current.push(csr.id);
+      csrIdsByManagerId.set(csr.manager_id, current);
+      continue;
+    }
+
+    unassignedCsrIds.push(csr.id);
+  }
+
+  const hasExplicitAssignments = Array.from(csrIdsByManagerId.values()).some((ids) => ids.length > 0);
+  if (hasExplicitAssignments) {
+    return {
+      mode: "manager_assignment",
+      csrIdsByManagerId,
+      unassignedCsrIds,
+    };
+  }
+
+  if (managers.length === 0) {
+    return {
+      mode: "none",
+      csrIdsByManagerId,
+      unassignedCsrIds,
+    };
+  }
+
+  if (unassignedCsrIds.length === 0) {
+    return {
+      mode: "none",
+      csrIdsByManagerId,
+      unassignedCsrIds,
+    };
+  }
+
+  const managerWorkloads = managers
+    .slice()
+    .sort((a, b) => getUserSortLabel(a).localeCompare(getUserSortLabel(b)))
+    .map((manager) => ({
+      managerId: manager.id,
+      caseLoad: 0,
+    }));
+
+  const fallbackCsrIds = unassignedCsrIds
+    .slice()
+    .sort((leftId, rightId) => {
+      const leftLoad = csrMetricsById.get(leftId)?.totalCases ?? 0;
+      const rightLoad = csrMetricsById.get(rightId)?.totalCases ?? 0;
+      return rightLoad - leftLoad;
+    });
+
+  for (const csrId of fallbackCsrIds) {
+    managerWorkloads.sort((a, b) => {
+      if (a.caseLoad !== b.caseLoad) {
+        return a.caseLoad - b.caseLoad;
+      }
+
+      return a.managerId.localeCompare(b.managerId);
+    });
+
+    const [targetManager] = managerWorkloads;
+    if (!targetManager) {
+      break;
+    }
+
+    const current = csrIdsByManagerId.get(targetManager.managerId) ?? [];
+    current.push(csrId);
+    csrIdsByManagerId.set(targetManager.managerId, current);
+    targetManager.caseLoad += csrMetricsById.get(csrId)?.totalCases ?? 0;
+  }
+
+  return {
+    mode: "derived_balanced_fallback",
+    csrIdsByManagerId,
+    unassignedCsrIds: [],
+  };
 }
 
 function ensureSupabase() {
@@ -598,7 +813,7 @@ router.get("/employee/tree", requireAuth, requireRole("CSR", "Manager", "Executi
   }
 
   const [usersResult, customersResult, casesResult] = await Promise.all([
-    client.from("users").select("id,email,name,role,created_at").in("role", visibleRoles),
+    client.from("users").select("id,email,name,role,manager_id,created_at").in("role", visibleRoles),
     client.from("customers").select("id,user_id,company,contact_info,created_at"),
     client
       .from("cases")
@@ -629,6 +844,7 @@ router.get("/employee/tree", requireAuth, requireRole("CSR", "Manager", "Executi
       email: viewer.email,
       name: viewer.name ?? null,
       role: "CSR",
+      manager_id: null,
       created_at: new Date().toISOString(),
     });
   }
@@ -698,6 +914,72 @@ router.get("/employee/tree", requireAuth, requireRole("CSR", "Manager", "Executi
       return (a.name ?? a.email).localeCompare(b.name ?? b.email);
     });
 
+  const resolvedTodayThresholdEpoch = getStartOfUtcDayEpoch();
+  const emptyMetrics = aggregatePerformanceMetrics([]);
+  const employeeMetricsById = new Map<string, PerformanceMetrics>(
+    employees.map((employee) => [
+      employee.id,
+      buildPerformanceMetrics(casesByEmployeeId.get(employee.id) ?? [], resolvedTodayThresholdEpoch),
+    ]),
+  );
+
+  const csrEmployees = employees.filter((employee) => employee.role === "CSR");
+  const managerEmployees = employees.filter((employee) => employee.role === "Manager");
+
+  const csrMetricsById = new Map<string, PerformanceMetrics>(
+    csrEmployees.map((csr) => [csr.id, employeeMetricsById.get(csr.id) ?? emptyMetrics]),
+  );
+  const managerAssignments = buildManagerCsrAssignments(managerEmployees, csrEmployees, csrMetricsById);
+
+  const managerAggregates: ManagerAggregateSummary[] = managerEmployees.map((manager) => {
+    const teamCsrIds = managerAssignments.csrIdsByManagerId.get(manager.id) ?? [];
+    const teamMetrics = aggregatePerformanceMetrics(
+      teamCsrIds.map((csrId) => csrMetricsById.get(csrId) ?? emptyMetrics),
+    );
+
+    return {
+      managerId: manager.id,
+      managerName: manager.name,
+      managerEmail: manager.email,
+      csrCount: teamCsrIds.length,
+      metrics: teamMetrics,
+    };
+  });
+
+  const managerAggregateScope: ManagerAggregateScope | undefined =
+    viewer.role === "Executive" || viewer.role === "Admin"
+      ? {
+          allocationMode: managerAssignments.mode,
+          managerCount: managerEmployees.length,
+          csrCount: csrEmployees.length,
+          unassignedCsrCount: managerAssignments.unassignedCsrIds.length,
+          metrics: aggregatePerformanceMetrics(managerAggregates.map((entry) => entry.metrics)),
+          unassignedMetrics: aggregatePerformanceMetrics(
+            managerAssignments.unassignedCsrIds.map((csrId) => csrMetricsById.get(csrId) ?? emptyMetrics),
+          ),
+          managers: managerAggregates,
+        }
+      : undefined;
+
+  const viewerTeamMetrics: TeamMetricsSummary | undefined =
+    viewer.role === "Manager"
+      ? (() => {
+          const teamCsrIds = managerAssignments.csrIdsByManagerId.get(viewer.sub) ?? [];
+          const teamMetrics = aggregatePerformanceMetrics(
+            teamCsrIds.map((csrId) => csrMetricsById.get(csrId) ?? emptyMetrics),
+          );
+
+          return {
+            managerId: viewer.sub,
+            csrCount: teamCsrIds.length,
+            allocationMode: managerAssignments.mode,
+            metrics: teamMetrics,
+          };
+        })()
+      : undefined;
+
+  const scopeMetrics = aggregatePerformanceMetrics(Array.from(employeeMetricsById.values()));
+
   const tree = employees.map((employee) => {
     const employeeCases = (casesByEmployeeId.get(employee.id) ?? []).sort((a, b) => {
       const priorityCompare = getPrioritySortWeight(a.priority) - getPrioritySortWeight(b.priority);
@@ -760,6 +1042,7 @@ router.get("/employee/tree", requireAuth, requireRole("CSR", "Manager", "Executi
       email: employee.email,
       role: employee.role,
       createdAt: employee.created_at,
+      metrics: employeeMetricsById.get(employee.id) ?? emptyMetrics,
       customers: customersSorted,
     };
   });
@@ -771,15 +1054,35 @@ router.get("/employee/tree", requireAuth, requireRole("CSR", "Manager", "Executi
     }
   }
 
+  const scope: {
+    viewerId: string;
+    viewerRole: Role;
+    employeeCount: number;
+    customerCount: number;
+    caseCount: number;
+    metrics: PerformanceMetrics;
+    teamMetrics?: TeamMetricsSummary;
+    managerAggregates?: ManagerAggregateScope;
+  } = {
+    viewerId: viewer.sub,
+    viewerRole: viewer.role,
+    employeeCount: tree.length,
+    customerCount: visibleCustomerIds.size,
+    caseCount: filteredCases.length,
+    metrics: scopeMetrics,
+  };
+
+  if (viewerTeamMetrics) {
+    scope.teamMetrics = viewerTeamMetrics;
+  }
+
+  if (managerAggregateScope) {
+    scope.managerAggregates = managerAggregateScope;
+  }
+
   res.json({
     status: "ok",
-    scope: {
-      viewerId: viewer.sub,
-      viewerRole: viewer.role,
-      employeeCount: tree.length,
-      customerCount: visibleCustomerIds.size,
-      caseCount: filteredCases.length,
-    },
+    scope,
     data: tree,
   });
 });
