@@ -462,3 +462,37 @@ This checklist tracks the completion of each TreeCRM development session. Each s
   - frontend `npm run lint`
   - frontend `npm run build`
 - Production verification is still pending because the local workspace is configured against `http://localhost:4000` / `http://localhost:3000`, not the deployed Session 11 URLs.
+
+---
+
+## Session 13 - Unified Infinite-Canvas Tree Visualization
+
+**Objective:** Replace the split employee hierarchy and CSR graph views with a single progressive infinite-canvas tree so drilling through the org/customer/case structure happens in one workspace.
+
+### Tasks
+- [x] Merge the separate employee hierarchy and CSR skill-tree panels into one canvas-based tree.
+- [x] Add unified tree data types and builder logic for employee, customer, and case nodes.
+- [x] Add layout logic for hierarchy fan-out and priority-ring case placement.
+- [x] Add expand/collapse, pan/zoom, and reset-view interactions in the unified canvas.
+- [x] Keep selection behavior wired to the existing detail and chat panels.
+- [ ] Complete manual role-based regression testing in the deployed environment.
+
+**Target Outcome:**
+- Employee workspace uses one infinite canvas instead of two disconnected graph modes
+- CSR, Manager, Executive, and Admin flows drill progressively through the same tree
+- Case priority remains visually encoded while navigation friction is reduced
+
+**Summary (March 7, 2026):**
+- Replaced the two-panel employee graph experience with a unified infinite-canvas tree workspace.
+- Added shared unified tree model types and `buildUnifiedTree()` so employee, customer, and case relationships are emitted from one source of truth for the canvas.
+- Added `layoutUnifiedTree()` to position hierarchy nodes with fan-out spacing and render case children in priority-based rings around the expanded customer context.
+- Added `UnifiedTreeCanvas.tsx` with pan/zoom, expand/collapse controls, priority arcs, and reset-view behavior while preserving existing selection callbacks for employee/customer/case detail panels.
+- Updated `EmployeeTreeWorkspace.tsx` to track expanded node state instead of switching between separate focused graph modes.
+- Local validation reported in the walkthrough:
+  - frontend lint: 0 errors, 2 non-blocking warnings
+  - frontend build: successful TypeScript + Next.js compilation
+- Outstanding follow-up:
+  - verify CSR drill flow (CSR -> customer -> cases) against the deployed stack
+  - verify Manager drill flow (Manager -> CSR -> customer -> cases)
+  - verify Executive drill flow (Executive -> Manager -> CSR -> customer -> cases)
+  - confirm pan/zoom and reset-view behavior across desktop and mobile-sized viewports

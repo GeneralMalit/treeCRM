@@ -267,3 +267,233 @@ export function layoutSkillTreeGraph(model: SkillTreeGraphModel): SkillTreeCanva
     rings: ringConfigurations,
   };
 }
+
+/* ---------- Unified Tree Layout ---------- */
+
+import type { UnifiedTreeModel, UnifiedTreeNode } from "@/lib/employeeGraph";
+import type { CasePriority } from "@/lib/employeeTree";
+
+export type UnifiedNodeLayout = {
+  node: UnifiedTreeNode;
+  x: number;
+  y: number;
+  radius: number;
+};
+
+export type UnifiedEdgeLayout = {
+  id: string;
+  fromX: number;
+  fromY: number;
+  toX: number;
+  toY: number;
+  style: "dashed" | "solid";
+};
+
+export type UnifiedPriorityArc = {
+  parentNodeId: string;
+  priority: CasePriority;
+  cx: number;
+  cy: number;
+  radius: number;
+  startAngle: number;
+  endAngle: number;
+};
+
+export type UnifiedCanvasLayout = {
+  nodes: UnifiedNodeLayout[];
+  edges: UnifiedEdgeLayout[];
+  arcs: UnifiedPriorityArc[];
+  /** Bounding box for zoom-to-fit. */
+  minX: number;
+  minY: number;
+  maxX: number;
+  maxY: number;
+};
+
+const UNIFIED_CHILD_SPACING = 160;
+const UNIFIED_FAN_RADIUS = 200;
+const UNIFIED_FAN_START = -160;
+const UNIFIED_FAN_END = -20;
+const UNIFIED_NODE_RADIUS_EMPLOYEE = 32;
+const UNIFIED_NODE_RADIUS_CUSTOMER = 26;
+const UNIFIED_NODE_RADIUS_CASE = 20;
+const UNIFIED_CASE_RING_HIGH = 90;
+const UNIFIED_CASE_RING_MEDIUM = 140;
+const UNIFIED_CASE_RING_LOW = 190;
+const UNIFIED_CASE_RING_START = -160;
+const UNIFIED_CASE_RING_END = -20;
+
+function getNodeRadius(kind: UnifiedTreeNode["kind"]): number {
+  switch (kind) {
+    case "employee":
+      return UNIFIED_NODE_RADIUS_EMPLOYEE;
+    case "customer":
+      return UNIFIED_NODE_RADIUS_CUSTOMER;
+    case "case":
+      return UNIFIED_NODE_RADIUS_CASE;
+  }
+}
+
+function getCaseRingRadius(priority: CasePriority): number {
+  switch (priority) {
+    case "High":
+      return UNIFIED_CASE_RING_HIGH;
+    case "Medium":
+      return UNIFIED_CASE_RING_MEDIUM;
+    case "Low":
+    default:
+      return UNIFIED_CASE_RING_LOW;
+  }
+}
+
+export function layoutUnifiedTree(model: UnifiedTreeModel): UnifiedCanvasLayout {
+  const positions = new Map<string, GraphPoint>();
+  const nodeLayouts: UnifiedNodeLayout[] = [];
+  const edgeLayouts: UnifiedEdgeLayout[] = [];
+  const arcs: UnifiedPriorityArc[] = [];
+
+  if (model.nodes.length === 0) {
+    return { nodes: [], edges: [], arcs: [], minX: -400, minY: -400, maxX: 400, maxY: 400 };
+  }
+
+  // Index by parent
+  const childrenByParent = new Map<string | null, UnifiedTreeNode[]>();
+  for (const node of model.nodes) {
+    const children = childrenByParent.get(node.parentId) ?? [];
+    children.push(node);
+    childrenByParent.set(node.parentId, children);
+  }
+
+  // Root at origin
+  const root = model.nodes.find((n) => n.id === model.rootId);
+  if (!root) {
+    return { nodes: [], edges: [], arcs: [], minX: -400, minY: -400, maxX: 400, maxY: 400 };
+  }
+
+  positions.set(root.id, { x: 0, y: 0 });
+
+  // Place children recursively.
+  // Non-case children fan out above their parent in a semicircle.
+  // Case children use radial priority rings around their parent.
+  function placeChildren(parentId: string, parentX: number, parentY: number): void {
+    const children = childrenByParent.get(parentId) ?? [];
+    if (children.length === 0) {
+      return;
+    }
+
+    // Separate cases from non-cases
+    const caseChildren = children.filter((c) => c.kind === "case");
+    const nonCaseChildren = children.filter((c) => c.kind !== "case");
+
+    // Place non-case children in a fan above parent
+    if (nonCaseChildren.length > 0) {
+      const fanRadius = UNIFIED_FAN_RADIUS;
+      const angles = distributeAngles(nonCaseChildren.length, UNIFIED_FAN_START, UNIFIED_FAN_END);
+
+      nonCaseChildren.forEach((child, index) => {
+        const angle = angles[index] ?? ((UNIFIED_FAN_START + UNIFIED_FAN_END) / 2);
+        const pos = polarToCartesian(parentX, parentY, fanRadius, angle);
+
+        positions.set(child.id, pos);
+        placeChildren(child.id, pos.x, pos.y);
+      });
+    }
+
+    // Place case children in priority rings around parent
+    if (caseChildren.length > 0) {
+      const casesByPriority: Record<CasePriority, UnifiedTreeNode[]> = {
+        High: [],
+        Medium: [],
+        Low: [],
+      };
+
+      for (const c of caseChildren) {
+        const p = c.priority ?? "Low";
+        casesByPriority[p].push(c);
+      }
+
+      const priorities: CasePriority[] = ["High", "Medium", "Low"];
+      for (const priority of priorities) {
+        const cases = casesByPriority[priority];
+        if (cases.length === 0) {
+          continue;
+        }
+
+        const ringRadius = getCaseRingRadius(priority);
+        const ringAngles = distributeAngles(cases.length, UNIFIED_CASE_RING_START, UNIFIED_CASE_RING_END);
+
+        // Add arc descriptor for visual ring guide
+        arcs.push({
+          parentNodeId: parentId,
+          priority,
+          cx: parentX,
+          cy: parentY,
+          radius: ringRadius,
+          startAngle: UNIFIED_CASE_RING_START,
+          endAngle: UNIFIED_CASE_RING_END,
+        });
+
+        cases.forEach((caseNode, idx) => {
+          const angle = ringAngles[idx] ?? ((UNIFIED_CASE_RING_START + UNIFIED_CASE_RING_END) / 2);
+          const pos = polarToCartesian(parentX, parentY, ringRadius, angle);
+          positions.set(caseNode.id, pos);
+        });
+      }
+    }
+  }
+
+  placeChildren(root.id, 0, 0);
+
+  // Build node layouts
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+
+  for (const node of model.nodes) {
+    const pos = positions.get(node.id);
+    if (!pos) {
+      continue;
+    }
+
+    const radius = getNodeRadius(node.kind);
+    nodeLayouts.push({ node, x: pos.x, y: pos.y, radius });
+
+    minX = Math.min(minX, pos.x - radius - 60);
+    minY = Math.min(minY, pos.y - radius - 60);
+    maxX = Math.max(maxX, pos.x + radius + 60);
+    maxY = Math.max(maxY, pos.y + radius + 60);
+  }
+
+  // Build edge layouts
+  for (const edge of model.edges) {
+    const from = positions.get(edge.fromId);
+    const to = positions.get(edge.toId);
+    if (!from || !to) {
+      continue;
+    }
+
+    edgeLayouts.push({
+      id: edge.id,
+      fromX: from.x,
+      fromY: from.y,
+      toX: to.x,
+      toY: to.y,
+      style: edge.style,
+    });
+  }
+
+  // Ensure minimum bounding box
+  if (minX === Infinity) {
+    minX = -400;
+    minY = -400;
+    maxX = 400;
+    maxY = 400;
+  }
+
+  // Add padding
+  minX -= 120;
+  minY -= 120;
+  maxX += 120;
+  maxY += 120;
+
+  return { nodes: nodeLayouts, edges: edgeLayouts, arcs, minX, minY, maxX, maxY };
+}
+

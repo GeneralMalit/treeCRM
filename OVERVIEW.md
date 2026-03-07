@@ -86,7 +86,7 @@ TreeCRM has two main interfaces: Employee Interface (Tree System) and Customer P
 ## Employee Interface (Tree System)
 Primary operational control center with a hierarchical tree showing organization and active cases.
 
-**Status (March 7, 2026):** Session 12 replaced the old list/tree workspace with a graph-first employee view. CSR users now get a focused radial skill tree with customer context nodes and priority rings, while Manager/Executive/Admin users get an employee hierarchy graph that opens focused CSR skill trees on selection. The same details/chat panels remain in sync with graph selection.
+**Status (March 7, 2026):** Session 13 replaced the split graph workspace with a single unified infinite-canvas tree. CSR users now land directly in one zoomable tree centered on themselves, with customers as children and case nodes expanding in priority rings. Manager/Executive/Admin users use the same canvas to drill progressively from employee hierarchy -> CSR -> customer -> cases while keeping the details/chat panels synchronized with the active selection.
 
 
 Example structure:
@@ -113,6 +113,8 @@ Shared interactions:
 - expand/collapse
 - click for details
 - visual status indicators
+- pan/zoom on the infinite canvas
+- reset-view control for fast recentering
 
 Clicking a node opens a side panel with detailed information.
 
@@ -129,7 +131,7 @@ Responsibilities:
 - add internal notes
 - endorse cases upward
 
-CSR tree view (self as root):
+CSR tree view (self as root on the unified canvas):
 ```text
 CSR (You)
    + Customer A
@@ -140,7 +142,7 @@ CSR (You)
    + Customer C
 ```
 
-Cases are arranged visually by priority using semicircles:
+Cases are arranged visually by priority using concentric priority rings:
 - high: closest
 - medium: middle
 - low/untagged: outer
@@ -156,6 +158,15 @@ Capabilities:
 - view CSR metrics
 
 Scope is restricted to their own team (cannot view other managers' CSRs).
+
+Manager canvas flow:
+```text
+Manager
+   + CSR A
+   + CSR B
+        + Customer
+             + Priority-ring cases
+```
 
 Manager metrics in node detail panel:
 - number of ongoing cases
@@ -173,6 +184,15 @@ Capabilities:
 - observe team-level metrics
 
 Focus is operational oversight rather than day-to-day handling.
+
+Executive canvas flow:
+```text
+Executive
+   + Manager
+        + CSR
+             + Customer
+                  + Priority-ring cases
+```
 
 ### Administrator
 Maintains system with full data/configuration access.
@@ -342,8 +362,9 @@ CSR reply -> Customer sees message instantly
 - Session 3 public-table RLS hardening is now implemented (`users`, `customers`, `cases`, `tags`, `case_tags`, `messages`, `endorsements`, `notifications`).
 - Session 6 smoke test reliability can be impacted by Supabase email-rate limits when creating multiple fresh auth users quickly.
 - Session 11 completed database hardening (`public.internal_messages` now enforces RLS as of 2026-03-07); check `docs/session_11_internal_messages_rls.sql` for policy details.
-- Session 12 is now implemented locally as of March 7, 2026: the employee workspace uses graph canvases, escalation approval no longer implies reassignment, and CSR custom tags are supported in case management.
-- Remaining follow-up for Session 12: production verification against the deployed Session 11 frontend/backend URLs.
+- Session 12 is implemented locally as of March 7, 2026: escalation approval no longer implies reassignment, and CSR custom tags are supported in case management.
+- Session 13 is implemented locally as of March 7, 2026: the employee workspace now uses a single unified infinite-canvas tree instead of separate hierarchy and CSR graph panels.
+- Remaining follow-up for Sessions 12-13: production verification against the deployed Session 11 frontend/backend URLs plus manual regression checks for CSR, Manager, and Executive drill paths on the unified canvas.
 
 ## Performance Metrics
 Managers and executives track CSR metrics:

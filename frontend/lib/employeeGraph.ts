@@ -5,6 +5,7 @@ import type {
   EmployeeTreeCustomer,
   EmployeeTreeEmployee,
   EmployeeTreeScope,
+  PerformanceMetrics,
 } from "./employeeTree";
 import type { Role } from "./roles";
 
@@ -185,4 +186,262 @@ export function buildSkillTreeGraph(
       Low: activeCustomer?.cases.filter((caseItem) => caseItem.priority === "Low") ?? [],
     },
   };
+}
+
+/* ---------- Unified Tree Types ---------- */
+
+export type UnifiedNodeKind = "employee" | "customer" | "case";
+
+export type UnifiedTreeNode = {
+  id: string;
+  kind: UnifiedNodeKind;
+  label: string;
+  subtitle: string;
+  parentId: string | null;
+  /** Whether this node can be toggled to show children (has children data). */
+  expandable: boolean;
+  /** Whether this node is currently expanded (children visible). */
+  expanded: boolean;
+  /** Role accent color for employees, priority outline for cases, neutral for customers. */
+  accentColor: string;
+  /** Fill color — white for employees/customers, status fill for cases. */
+  fillColor: string;
+  /** Optional halo color for pending endorsements. */
+  haloColor: string | null;
+  /** Data references for detail panel sync. */
+  employee: EmployeeTreeEmployee | null;
+  customer: EmployeeTreeCustomer | null;
+  caseItem: EmployeeTreeCase | null;
+  /** Priority ring info for case nodes. */
+  priority: CasePriority | null;
+  /** Edge style to parent. */
+  edgeStyle: "dashed" | "solid";
+  /** Metrics summary for employee nodes. */
+  metricsSummary: string;
+};
+
+export type UnifiedTreeEdge = {
+  id: string;
+  fromId: string;
+  toId: string;
+  style: "dashed" | "solid";
+};
+
+export type UnifiedTreeModel = {
+  nodes: UnifiedTreeNode[];
+  edges: UnifiedTreeEdge[];
+  rootId: string;
+};
+
+function makeEmployeeEdgeStyle(childRole: Role): "dashed" | "solid" {
+  if (childRole === "CSR" || childRole === "Manager" || childRole === "Executive" || childRole === "Admin") {
+    return "dashed";
+  }
+  return "solid";
+}
+
+function buildMetricsSummary(metrics: PerformanceMetrics): string {
+  const parts: string[] = [];
+  parts.push(`${metrics.ongoingCases} ongoing`);
+  parts.push(`${metrics.resolvedToday} resolved today`);
+  return parts.join(" · ");
+}
+
+/**
+ * Build a unified tree model rooted at the viewer.
+ *
+ * Only immediate children of the root are shown by default.
+ * Deeper branches appear only when their parent is in `expandedNodeIds`.
+ */
+export function buildUnifiedTree(
+  scope: EmployeeTreeScope,
+  employees: EmployeeTreeEmployee[],
+  expandedNodeIds: ReadonlySet<string>,
+): UnifiedTreeModel {
+  const nodes: UnifiedTreeNode[] = [];
+  const edges: UnifiedTreeEdge[] = [];
+  const viewerEmployee = employees.find((e) => e.id === scope.viewerId);
+
+  if (!viewerEmployee) {
+    return { nodes: [], edges: [], rootId: scope.viewerId };
+  }
+
+
+
+  // Determine children relationships based on viewer role.
+  // Executive/Admin root → child managers (and unparented CSRs).
+  // Manager root → child CSRs.
+  // CSR root → child customers → child cases.
+
+  function getEmployeeChildren(parentId: string): EmployeeTreeEmployee[] {
+    return employees.filter((e) => e.managerId === parentId && e.id !== parentId);
+  }
+
+  function addEmployeeNode(employee: EmployeeTreeEmployee, parentNodeId: string | null, depth: number): void {
+    const customerCount = employee.customers.length;
+    const caseCount = employee.customers.reduce((t, c) => t + c.cases.length, 0);
+    const empChildren = getEmployeeChildren(employee.id);
+    const hasChildren = empChildren.length > 0 || customerCount > 0;
+    const isRoot = parentNodeId === null;
+    const isExpanded = isRoot || expandedNodeIds.has(employee.id);
+
+    nodes.push({
+      id: employee.id,
+      kind: "employee",
+      label: getEmployeeDisplayName(employee),
+      subtitle: `${employee.role} · ${caseCount} cases`,
+      parentId: parentNodeId,
+      expandable: hasChildren,
+      expanded: isExpanded,
+      accentColor: getEmployeeGraphAccent(employee.role),
+      fillColor: "#FFFFFF",
+      haloColor: null,
+      employee,
+      customer: null,
+      caseItem: null,
+      priority: null,
+      edgeStyle: makeEmployeeEdgeStyle(employee.role),
+      metricsSummary: buildMetricsSummary(employee.metrics),
+    });
+
+    if (parentNodeId !== null) {
+      edges.push({
+        id: `${parentNodeId}→${employee.id}`,
+        fromId: parentNodeId,
+        toId: employee.id,
+        style: "dashed",
+      });
+    }
+
+    if (!isExpanded) {
+      return;
+    }
+
+    // Add child employees (deeper managers/CSRs).
+    for (const child of empChildren) {
+      addEmployeeNode(child, employee.id, depth + 1);
+    }
+
+    // If this employee is a CSR (or has no child employees but has customers), show customers.
+    if (employee.role === "CSR" || (empChildren.length === 0 && customerCount > 0)) {
+      for (const customer of employee.customers) {
+        addCustomerNode(customer, employee, employee.id);
+      }
+    }
+  }
+
+  function addCustomerNode(customer: EmployeeTreeCustomer, parentEmployee: EmployeeTreeEmployee, parentNodeId: string): void {
+    const custNodeId = `cust:${customer.id}`;
+    const hasCases = customer.cases.length > 0;
+    const isExpanded = expandedNodeIds.has(custNodeId);
+
+    nodes.push({
+      id: custNodeId,
+      kind: "customer",
+      label: customer.company,
+      subtitle: hasCases ? `${customer.cases.length} case(s)` : "No cases",
+      parentId: parentNodeId,
+      expandable: hasCases,
+      expanded: isExpanded,
+      accentColor: "#64748B",
+      fillColor: "#F8FAFC",
+      haloColor: null,
+      employee: parentEmployee,
+      customer,
+      caseItem: null,
+      priority: null,
+      edgeStyle: "solid",
+      metricsSummary: "",
+    });
+
+    edges.push({
+      id: `${parentNodeId}→${custNodeId}`,
+      fromId: parentNodeId,
+      toId: custNodeId,
+      style: "solid",
+    });
+
+    if (!isExpanded) {
+      return;
+    }
+
+    // Cases fan out from customer node.
+    for (const caseItem of customer.cases) {
+      addCaseNode(caseItem, parentEmployee, customer, custNodeId);
+    }
+  }
+
+  function addCaseNode(
+    caseItem: EmployeeTreeCase,
+    parentEmployee: EmployeeTreeEmployee,
+    parentCustomer: EmployeeTreeCustomer,
+    parentNodeId: string,
+  ): void {
+    const caseNodeId = `case:${caseItem.id}`;
+
+    nodes.push({
+      id: caseNodeId,
+      kind: "case",
+      label: caseItem.title,
+      subtitle: caseItem.status,
+      parentId: parentNodeId,
+      expandable: false,
+      expanded: false,
+      accentColor: PRIORITY_OUTLINE_COLORS[caseItem.priority],
+      fillColor: STATUS_FILL_COLORS[caseItem.status],
+      haloColor: caseItem.hasPendingEndorsement ? ENDORSEMENT_HALO_COLOR : null,
+      employee: parentEmployee,
+      customer: parentCustomer,
+      caseItem,
+      priority: caseItem.priority,
+      edgeStyle: "solid",
+      metricsSummary: "",
+    });
+
+    edges.push({
+      id: `${parentNodeId}→${caseNodeId}`,
+      fromId: parentNodeId,
+      toId: caseNodeId,
+      style: "solid",
+    });
+  }
+
+  // Build from root.
+  addEmployeeNode(viewerEmployee, null, 0);
+
+  // For Executive/Admin — also add Managers/CSRs that have no explicit managerId pointing to viewer
+  // but are in the scope (they may be unparented or have fallback assignments).
+  if (scope.viewerRole === "Executive" || scope.viewerRole === "Admin") {
+    const addedIds = new Set(nodes.map((n) => n.id));
+
+    // Find managers not yet added
+    const orphanManagers = employees.filter(
+      (e) => e.role === "Manager" && !addedIds.has(e.id),
+    );
+    for (const mgr of orphanManagers) {
+      addEmployeeNode(mgr, viewerEmployee.id, 1);
+    }
+
+    // Find CSRs not yet added (no manager or manager not in scope)
+    const addedIdsAfterManagers = new Set(nodes.map((n) => n.id));
+    const orphanCsrs = employees.filter(
+      (e) => e.role === "CSR" && !addedIdsAfterManagers.has(e.id),
+    );
+    for (const csr of orphanCsrs) {
+      addEmployeeNode(csr, viewerEmployee.id, 1);
+    }
+  }
+
+  // For Manager — also add CSRs not yet added
+  if (scope.viewerRole === "Manager") {
+    const addedIds = new Set(nodes.map((n) => n.id));
+    const orphanCsrs = employees.filter(
+      (e) => e.role === "CSR" && !addedIds.has(e.id),
+    );
+    for (const csr of orphanCsrs) {
+      addEmployeeNode(csr, viewerEmployee.id, 1);
+    }
+  }
+
+  return { nodes, edges, rootId: viewerEmployee.id };
 }

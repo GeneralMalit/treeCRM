@@ -22,8 +22,7 @@ import {
 } from "@mui/material";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { HierarchyCanvas } from "@/components/graph/HierarchyCanvas";
-import { SkillTreeCanvas } from "@/components/graph/SkillTreeCanvas";
+import { UnifiedTreeCanvas } from "@/components/graph/UnifiedTreeCanvas";
 import {
   addInternalNote,
   fetchCaseManagementDetails,
@@ -111,11 +110,11 @@ type SelectedNode =
   | { kind: "employee"; employee: EmployeeTreeEmployee }
   | { kind: "customer"; employee: EmployeeTreeEmployee; customer: EmployeeTreeCustomer }
   | {
-      kind: "case";
-      employee: EmployeeTreeEmployee;
-      customer: EmployeeTreeCustomer;
-      caseItem: EmployeeTreeCase;
-    };
+    kind: "case";
+    employee: EmployeeTreeEmployee;
+    customer: EmployeeTreeCustomer;
+    caseItem: EmployeeTreeCase;
+  };
 
 type ActionFeedback = {
   type: "success" | "error";
@@ -340,8 +339,7 @@ export function EmployeeTreeWorkspace({ allowedRoles, title, description }: Empl
   const router = useRouter();
   const [state, setState] = useState<ViewState>({ status: "loading" });
   const [selectedNode, setSelectedNode] = useState<SelectedNode | null>(null);
-  const [focusedCsrEmployeeId, setFocusedCsrEmployeeId] = useState<string | null>(null);
-  const [focusedCustomerId, setFocusedCustomerId] = useState<string | null>(null);
+  const [expandedNodeIds, setExpandedNodeIds] = useState<Set<string>>(new Set());
   const [caseMetaCaseId, setCaseMetaCaseId] = useState<string | null>(null);
   const [caseMetaLoading, setCaseMetaLoading] = useState(false);
   const [caseMetaError, setCaseMetaError] = useState<string | null>(null);
@@ -392,7 +390,6 @@ export function EmployeeTreeWorkspace({ allowedRoles, title, description }: Empl
     [state],
   );
   const selectedCaseId = selectedNode?.kind === "case" ? selectedNode.caseItem.id : null;
-  const selectedEmployeeId = selectedNode?.employee.id ?? null;
   const sessionRole = state.status === "ready" ? state.data.user.role : null;
   const isCsrSession = sessionRole === "CSR";
   const canReviewEndorsements =
@@ -409,15 +406,13 @@ export function EmployeeTreeWorkspace({ allowedRoles, title, description }: Empl
     () => internalChatContacts.find((contact) => contact.id === selectedInternalChatContactId) ?? null,
     [internalChatContacts, selectedInternalChatContactId],
   );
-  const focusedCsrEmployee = useMemo(() => {
-    if (!focusedCsrEmployeeId) {
-      return null;
-    }
-
-    return employeeNodes.find((employee) => employee.id === focusedCsrEmployeeId && employee.role === "CSR") ?? null;
-  }, [employeeNodes, focusedCsrEmployeeId]);
-  const graphSelectedCustomerId =
-    selectedNode?.kind === "customer" || selectedNode?.kind === "case" ? selectedNode.customer.id : focusedCustomerId;
+  const unifiedSelectedNodeId = useMemo(() => {
+    if (!selectedNode) return null;
+    if (selectedNode.kind === "employee") return selectedNode.employee.id;
+    if (selectedNode.kind === "customer") return `cust:${selectedNode.customer.id}`;
+    if (selectedNode.kind === "case") return `case:${selectedNode.caseItem.id}`;
+    return null;
+  }, [selectedNode]);
 
   const refreshTreeForCurrentUser = useCallback(
     async (accessToken: string, user: ReadyState["user"], preferredCaseId?: string) => {
@@ -529,71 +524,32 @@ export function EmployeeTreeWorkspace({ allowedRoles, title, description }: Empl
     };
   }, [allowedRoles, router]);
 
+  // Reset expanded nodes when tree data reloads
   useEffect(() => {
     if (state.status !== "ready") {
-      if (focusedCsrEmployeeId !== null) {
-        setFocusedCsrEmployeeId(null);
+      setExpandedNodeIds(new Set());
+    }
+  }, [state]);
+
+  const handleToggleExpand = useCallback((nodeId: string) => {
+    setExpandedNodeIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(nodeId)) {
+        next.delete(nodeId);
+      } else {
+        next.add(nodeId);
       }
-      if (focusedCustomerId !== null) {
-        setFocusedCustomerId(null);
-      }
-      return;
-    }
-
-    if (state.data.user.role === "CSR") {
-      if (focusedCsrEmployeeId !== state.data.tree.scope.viewerId) {
-        setFocusedCsrEmployeeId(state.data.tree.scope.viewerId);
-      }
-      return;
-    }
-
-    if (
-      focusedCsrEmployeeId &&
-      !state.data.tree.data.some((employee) => employee.id === focusedCsrEmployeeId && employee.role === "CSR")
-    ) {
-      setFocusedCsrEmployeeId(null);
-    }
-  }, [focusedCsrEmployeeId, focusedCustomerId, state]);
-
-  useEffect(() => {
-    if (!focusedCsrEmployee) {
-      if (focusedCustomerId !== null) {
-        setFocusedCustomerId(null);
-      }
-      return;
-    }
-
-    let nextCustomerId = focusedCustomerId;
-    if (selectedNode?.employee.id === focusedCsrEmployee.id) {
-      if (selectedNode.kind === "customer" || selectedNode.kind === "case") {
-        nextCustomerId = selectedNode.customer.id;
-      }
-    }
-
-    if (!nextCustomerId || !focusedCsrEmployee.customers.some((customer) => customer.id === nextCustomerId)) {
-      nextCustomerId = focusedCsrEmployee.customers[0]?.id ?? null;
-    }
-
-    if (nextCustomerId !== focusedCustomerId) {
-      setFocusedCustomerId(nextCustomerId);
-    }
-  }, [focusedCsrEmployee, focusedCustomerId, selectedNode]);
+      return next;
+    });
+  }, []);
 
   const handleSelectEmployeeNode = useCallback((employee: EmployeeTreeEmployee) => {
     setSelectedNode({ kind: "employee", employee });
-    if (employee.role === "CSR") {
-      setFocusedCsrEmployeeId(employee.id);
-      setFocusedCustomerId(employee.customers[0]?.id ?? null);
-    }
   }, []);
 
   const handleSelectCustomerNode = useCallback(
     (employee: EmployeeTreeEmployee, customer: EmployeeTreeCustomer) => {
       setSelectedNode({ kind: "customer", employee, customer });
-      if (employee.role === "CSR") {
-        setFocusedCsrEmployeeId(employee.id);
-        setFocusedCustomerId(customer.id);
-      }
     },
     [],
   );
@@ -601,10 +557,6 @@ export function EmployeeTreeWorkspace({ allowedRoles, title, description }: Empl
   const handleSelectCaseNode = useCallback(
     (employee: EmployeeTreeEmployee, customer: EmployeeTreeCustomer, caseItem: EmployeeTreeCase) => {
       setSelectedNode({ kind: "case", employee, customer, caseItem });
-      if (employee.role === "CSR") {
-        setFocusedCsrEmployeeId(employee.id);
-        setFocusedCustomerId(customer.id);
-      }
     },
     [],
   );
@@ -2240,46 +2192,17 @@ export function EmployeeTreeWorkspace({ allowedRoles, title, description }: Empl
               <Alert severity="info">No assigned records are currently available in your scope.</Alert>
             )}
 
-            {state.status === "ready" && isCsrSession && focusedCsrEmployee && (
-              <SkillTreeCanvas
-                employee={focusedCsrEmployee}
-                activeCustomerId={graphSelectedCustomerId}
-                selectedEmployeeId={selectedEmployeeId}
-                selectedCustomerId={graphSelectedCustomerId}
-                selectedCaseId={selectedCaseId}
+            {state.status === "ready" && state.data.tree.data.length > 0 && (
+              <UnifiedTreeCanvas
+                employees={employeeNodes}
+                scope={state.data.tree.scope}
+                expandedNodeIds={expandedNodeIds}
+                selectedNodeId={unifiedSelectedNodeId}
+                onToggleExpand={handleToggleExpand}
                 onSelectEmployee={handleSelectEmployeeNode}
                 onSelectCustomer={handleSelectCustomerNode}
                 onSelectCase={handleSelectCaseNode}
               />
-            )}
-
-            {state.status === "ready" && !isCsrSession && (
-              <Stack spacing={1.5}>
-                <HierarchyCanvas
-                  employees={employeeNodes}
-                  scope={state.data.tree.scope}
-                  selectedEmployeeId={selectedEmployeeId}
-                  focusedCsrId={focusedCsrEmployeeId}
-                  onSelectEmployee={handleSelectEmployeeNode}
-                />
-
-                {focusedCsrEmployee ? (
-                  <SkillTreeCanvas
-                    employee={focusedCsrEmployee}
-                    activeCustomerId={focusedCustomerId}
-                    selectedEmployeeId={selectedEmployeeId}
-                    selectedCustomerId={graphSelectedCustomerId}
-                    selectedCaseId={selectedCaseId}
-                    onSelectEmployee={handleSelectEmployeeNode}
-                    onSelectCustomer={handleSelectCustomerNode}
-                    onSelectCase={handleSelectCaseNode}
-                  />
-                ) : (
-                  <Alert severity="info">
-                    Select a CSR node in the hierarchy graph to open its focused radial case view.
-                  </Alert>
-                )}
-              </Stack>
             )}
           </Paper>
 
