@@ -6,6 +6,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.employeeChatRouter = void 0;
 const express_1 = __importDefault(require("express"));
 const roles_1 = require("../constants/roles");
+const employeeChatLogic_1 = require("../domain/employeeChatLogic");
 const requireAuth_1 = require("../middleware/requireAuth");
 const requireRole_1 = require("../middleware/requireRole");
 const notificationService_1 = require("../services/notificationService");
@@ -15,33 +16,8 @@ const MESSAGE_TYPE_VALUES = ["text", "internal_note", "system"];
 function isRecord(value) {
     return typeof value === "object" && value !== null && !Array.isArray(value);
 }
-function isUuid(value) {
-    return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
-}
 function isMessageType(value) {
     return (typeof value === "string" && MESSAGE_TYPE_VALUES.includes(value));
-}
-function parseUuidParam(raw, fieldName) {
-    if (typeof raw !== "string" || !isUuid(raw)) {
-        return { error: `${fieldName} must be a valid UUID.` };
-    }
-    return { data: raw };
-}
-function parseMessageBody(body) {
-    if (!isRecord(body)) {
-        return { error: "Request body must be a JSON object." };
-    }
-    if (typeof body.messageText !== "string") {
-        return { error: "messageText must be a string." };
-    }
-    const messageText = body.messageText.trim();
-    if (!messageText) {
-        return { error: "messageText cannot be empty." };
-    }
-    if (messageText.length > 4000) {
-        return { error: "messageText must be at most 4000 characters." };
-    }
-    return { data: { messageText } };
 }
 function getDisplayName(user) {
     if (typeof user.name === "string" && user.name.trim()) {
@@ -138,25 +114,6 @@ function toInternalMessageRows(rows) {
         created_at: row.created_at,
     }));
 }
-function getAllowedInternalPeerRoles(role) {
-    switch (role) {
-        case "CSR":
-            return ["Manager", "Executive", "Admin"];
-        case "Manager":
-            return ["CSR", "Executive", "Admin"];
-        case "Executive":
-            return ["CSR", "Manager", "Admin"];
-        case "Admin":
-            return ["CSR", "Manager", "Executive", "Admin"];
-        case "Customer":
-            return [];
-        default:
-            return [];
-    }
-}
-function canUsersChatInternally(roleA, roleB) {
-    return getAllowedInternalPeerRoles(roleA).includes(roleB) && getAllowedInternalPeerRoles(roleB).includes(roleA);
-}
 function getRoleSortWeight(role) {
     switch (role) {
         case "Executive":
@@ -191,7 +148,7 @@ router.get("/employee/cases/:caseId/messages", requireAuth_1.requireAuth, (0, re
         });
         return;
     }
-    const caseId = parseUuidParam(req.params.caseId, "caseId");
+    const caseId = (0, employeeChatLogic_1.parseUuidParam)(req.params.caseId, "caseId");
     if ("error" in caseId) {
         res.status(400).json({
             status: "error",
@@ -315,7 +272,7 @@ router.post("/employee/cases/:caseId/messages", requireAuth_1.requireAuth, (0, r
         });
         return;
     }
-    const caseId = parseUuidParam(req.params.caseId, "caseId");
+    const caseId = (0, employeeChatLogic_1.parseUuidParam)(req.params.caseId, "caseId");
     if ("error" in caseId) {
         res.status(400).json({
             status: "error",
@@ -323,7 +280,7 @@ router.post("/employee/cases/:caseId/messages", requireAuth_1.requireAuth, (0, r
         });
         return;
     }
-    const parsedBody = parseMessageBody(req.body);
+    const parsedBody = (0, employeeChatLogic_1.parseMessageBody)(req.body);
     if ("error" in parsedBody) {
         res.status(400).json({
             status: "error",
@@ -447,7 +404,7 @@ router.get("/employee/internal-chat/contacts", requireAuth_1.requireAuth, (0, re
         });
         return;
     }
-    const allowedRoles = getAllowedInternalPeerRoles(viewer.role);
+    const allowedRoles = (0, employeeChatLogic_1.getAllowedInternalPeerRoles)(viewer.role);
     if (allowedRoles.length === 0) {
         res.status(403).json({
             status: "error",
@@ -506,7 +463,7 @@ router.get("/employee/internal-chat/:peerUserId/messages", requireAuth_1.require
         });
         return;
     }
-    const peerUserId = parseUuidParam(req.params.peerUserId, "peerUserId");
+    const peerUserId = (0, employeeChatLogic_1.parseUuidParam)(req.params.peerUserId, "peerUserId");
     if ("error" in peerUserId) {
         res.status(400).json({
             status: "error",
@@ -541,7 +498,7 @@ router.get("/employee/internal-chat/:peerUserId/messages", requireAuth_1.require
         });
         return;
     }
-    if (!canUsersChatInternally(viewer.role, peer.role)) {
+    if (!(0, employeeChatLogic_1.canUsersChatInternally)(viewer.role, peer.role)) {
         res.status(403).json({
             status: "error",
             message: `Internal chat is not allowed between ${viewer.role} and ${peer.role}.`,
@@ -608,7 +565,7 @@ router.post("/employee/internal-chat/:peerUserId/messages", requireAuth_1.requir
         });
         return;
     }
-    const peerUserId = parseUuidParam(req.params.peerUserId, "peerUserId");
+    const peerUserId = (0, employeeChatLogic_1.parseUuidParam)(req.params.peerUserId, "peerUserId");
     if ("error" in peerUserId) {
         res.status(400).json({
             status: "error",
@@ -623,7 +580,7 @@ router.post("/employee/internal-chat/:peerUserId/messages", requireAuth_1.requir
         });
         return;
     }
-    const parsedBody = parseMessageBody(req.body);
+    const parsedBody = (0, employeeChatLogic_1.parseMessageBody)(req.body);
     if ("error" in parsedBody) {
         res.status(400).json({
             status: "error",
@@ -651,7 +608,7 @@ router.post("/employee/internal-chat/:peerUserId/messages", requireAuth_1.requir
         });
         return;
     }
-    if (!canUsersChatInternally(viewer.role, peer.role)) {
+    if (!(0, employeeChatLogic_1.canUsersChatInternally)(viewer.role, peer.role)) {
         res.status(403).json({
             status: "error",
             message: `Internal chat is not allowed between ${viewer.role} and ${peer.role}.`,

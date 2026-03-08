@@ -1,10 +1,9 @@
 import express from "express";
-import jwt from "jsonwebtoken";
-import { env, hasJwtSecret, hasSupabaseConfig } from "../config/env";
-import { DEFAULT_ROLE, isRole, type Role } from "../constants/roles";
+import { hasJwtSecret, hasSupabaseConfig } from "../config/env";
+import { isRole } from "../constants/roles";
+import { issueToken, normalizeUserRole, parseEmailPassword } from "../domain/authLogic";
 import { requireAuth } from "../middleware/requireAuth";
 import { supabase } from "../services/supabaseClient";
-import type { AuthTokenPayload } from "../types/auth";
 
 type RegisterBody = {
   email?: unknown;
@@ -17,32 +16,6 @@ type LoginBody = {
   email?: unknown;
   password?: unknown;
 };
-
-type ParsedCredentials = { email: string; password: string } | { error: string };
-
-function parseEmailPassword(email: unknown, password: unknown): ParsedCredentials {
-  if (typeof email !== "string" || !email.trim()) {
-    return { error: "Email is required." };
-  }
-
-  if (typeof password !== "string" || password.length < 8) {
-    return { error: "Password is required and must be at least 8 characters." };
-  }
-
-  return { email: email.trim(), password };
-}
-
-function normalizeUserRole(rawRole: unknown, fallback: Role = DEFAULT_ROLE): Role {
-  return isRole(rawRole) ? rawRole : fallback;
-}
-
-function issueToken(payload: Pick<AuthTokenPayload, "sub" | "email" | "role" | "name">): string {
-  if (!hasJwtSecret) {
-    throw new Error("JWT_SECRET is required in backend/.env");
-  }
-
-  return jwt.sign(payload, env.jwtSecret, { expiresIn: "8h" });
-}
 
 const router = express.Router();
 

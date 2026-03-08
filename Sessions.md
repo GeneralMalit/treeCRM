@@ -539,3 +539,44 @@ This checklist tracks the completion of each TreeCRM development session. Each s
   - frontend `npm run lint`
   - frontend `npm run build`
   - backend `npm run test:session10`
+
+---
+
+## Session 15 - Deterministic Test Stack, Global Footer, Semantic Versioning, and Repo Documentation
+
+**Objective:** Add comprehensive automated testing across frontend/backend, introduce application-wide semantic versioning with a global footer, and replace the repo README/CI baseline with accurate, maintainable project documentation and validation.
+
+### Tasks
+- [x] Add deterministic backend unit and route-contract tests with no live Supabase dependency in the default path.
+- [x] Add deterministic frontend unit/component tests plus Chromium Playwright coverage for key browser flows.
+- [x] Extract testable domain/helper logic instead of weakening assertions or relying on placeholder snapshots.
+- [x] Add a global footer with exact text `(c) 2026 treeCRM by General Malit - v1.0.0`.
+- [x] Establish a single repo-level semantic version source and sync it across frontend/backend/README metadata.
+- [x] Rewrite `README.md` with accurate stack badges, architecture details, commands, and versioning instructions.
+- [x] Add GitHub Actions CI for lint, build, deterministic test execution, and coverage artifact upload.
+- [x] Preserve live Supabase smoke checks behind an explicit manual `test:live` path.
+
+**Target Outcome:**
+- `npm test` from repo root runs a deterministic suite locally and in CI
+- Footer/version information is consistent across frontend, backend, and documentation
+- Repo docs explain how the system works and how to update the version
+- CI validates the same path developers run locally
+
+**Summary (March 8, 2026):**
+- Added a repo-root `package.json` as the canonical semantic version source for the whole application, starting at `1.0.0`, plus orchestration scripts for `lint`, `build`, `test`, `test:e2e`, `test:live`, and `version:sync`.
+- Added `scripts/sync-version.mjs` so repo version updates propagate into `backend/package.json`, `frontend/package.json`, lockfile metadata, and README version strings automatically.
+- Added backend deterministic test coverage using Vitest + Supertest, with extracted domain logic under `backend/src/domain` and route/domain tests under `backend/test`.
+- Added frontend deterministic test coverage using Vitest + Testing Library + Playwright, with extracted helper logic under `frontend/lib`, component/page tests under `frontend/test`, and browser-flow tests under `frontend/test/e2e`.
+- Added a global app footer through `frontend/app/layout.tsx` and `frontend/components/AppFooter.tsx`, driven by `frontend/lib/appMeta.ts`, so the exact legal/version string appears on public and protected routes.
+- Updated backend `/version` to read from synced package metadata so API version responses match the footer and README.
+- Replaced the repo README with a technical, current-state document covering stack, architecture, roles, commands, testing, deployment targets, and semantic versioning.
+- Added `.github/workflows/ci.yml` to run on Node `22.20.0`, install dependencies, execute repo-root lint/build/test, and upload backend/frontend coverage artifacts.
+- Local validation completed successfully:
+  - repo `npm run lint`
+  - repo `npm run build`
+  - repo `npm test`
+  - backend `npm run test:coverage`
+  - frontend `npm run test:coverage`
+- Follow-up and versioning note:
+  - semantic versioning now starts formally at `1.0.0`
+  - no immediate bump beyond `1.0.0` was applied because this session establishes the initial versioned baseline rather than a post-release delta

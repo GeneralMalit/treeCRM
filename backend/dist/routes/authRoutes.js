@@ -5,29 +5,11 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.authRouter = void 0;
 const express_1 = __importDefault(require("express"));
-const jsonwebtoken_1 = __importDefault(require("jsonwebtoken"));
 const env_1 = require("../config/env");
 const roles_1 = require("../constants/roles");
+const authLogic_1 = require("../domain/authLogic");
 const requireAuth_1 = require("../middleware/requireAuth");
 const supabaseClient_1 = require("../services/supabaseClient");
-function parseEmailPassword(email, password) {
-    if (typeof email !== "string" || !email.trim()) {
-        return { error: "Email is required." };
-    }
-    if (typeof password !== "string" || password.length < 8) {
-        return { error: "Password is required and must be at least 8 characters." };
-    }
-    return { email: email.trim(), password };
-}
-function normalizeUserRole(rawRole, fallback = roles_1.DEFAULT_ROLE) {
-    return (0, roles_1.isRole)(rawRole) ? rawRole : fallback;
-}
-function issueToken(payload) {
-    if (!env_1.hasJwtSecret) {
-        throw new Error("JWT_SECRET is required in backend/.env");
-    }
-    return jsonwebtoken_1.default.sign(payload, env_1.env.jwtSecret, { expiresIn: "8h" });
-}
 const router = express_1.default.Router();
 router.post("/register", async (req, res) => {
     if (!env_1.hasSupabaseConfig || !supabaseClient_1.supabase) {
@@ -45,7 +27,7 @@ router.post("/register", async (req, res) => {
         return;
     }
     const { email, password, role, name } = req.body;
-    const parsedCredentials = parseEmailPassword(email, password);
+    const parsedCredentials = (0, authLogic_1.parseEmailPassword)(email, password);
     if ("error" in parsedCredentials) {
         res.status(400).json({ status: "error", message: parsedCredentials.error });
         return;
@@ -57,7 +39,7 @@ router.post("/register", async (req, res) => {
         });
         return;
     }
-    const normalizedRole = normalizeUserRole(role);
+    const normalizedRole = (0, authLogic_1.normalizeUserRole)(role);
     const normalizedName = typeof name === "string" && name.trim() ? name.trim() : null;
     const { data, error } = await supabaseClient_1.supabase.auth.signUp({
         email: parsedCredentials.email,
@@ -83,11 +65,11 @@ router.post("/register", async (req, res) => {
         });
         return;
     }
-    const registeredRole = normalizeUserRole(data.user.user_metadata?.role, normalizedRole);
+    const registeredRole = (0, authLogic_1.normalizeUserRole)(data.user.user_metadata?.role, normalizedRole);
     const registeredName = typeof data.user.user_metadata?.name === "string"
         ? data.user.user_metadata.name
         : normalizedName ?? undefined;
-    const token = issueToken({
+    const token = (0, authLogic_1.issueToken)({
         sub: data.user.id,
         email: data.user.email,
         role: registeredRole,
@@ -122,7 +104,7 @@ router.post("/login", async (req, res) => {
         return;
     }
     const { email, password } = req.body;
-    const parsedCredentials = parseEmailPassword(email, password);
+    const parsedCredentials = (0, authLogic_1.parseEmailPassword)(email, password);
     if ("error" in parsedCredentials) {
         res.status(400).json({ status: "error", message: parsedCredentials.error });
         return;
@@ -138,9 +120,9 @@ router.post("/login", async (req, res) => {
         });
         return;
     }
-    const role = normalizeUserRole(data.user.user_metadata?.role);
+    const role = (0, authLogic_1.normalizeUserRole)(data.user.user_metadata?.role);
     const name = typeof data.user.user_metadata?.name === "string" ? data.user.user_metadata.name : undefined;
-    const token = issueToken({
+    const token = (0, authLogic_1.issueToken)({
         sub: data.user.id,
         email: data.user.email,
         role,

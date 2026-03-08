@@ -365,6 +365,9 @@ CSR reply -> Customer sees message instantly
 - Session 12 is implemented locally as of March 7, 2026: escalation approval no longer implies reassignment, and CSR custom tags are supported in case management.
 - Session 13 is implemented locally as of March 7, 2026: the employee workspace now uses a single unified infinite-canvas tree instead of separate hierarchy and CSR graph panels.
 - Remaining follow-up for Sessions 12-13: production verification against the deployed Session 11 frontend/backend URLs plus manual regression checks for CSR, Manager, and Executive drill paths on the unified canvas.
+- Session 15 is implemented locally as of March 8, 2026: deterministic frontend/backend test suites now run without live Supabase in the default path, with explicit live checks preserved under `npm run test:live`.
+- Session 15 also introduced a single repo-level semantic version source (`package.json` at repo root), sync automation (`scripts/sync-version.mjs`), and a global footer tied to the synced version string.
+- CI now validates the repo through root-level `lint`, `build`, `test`, and coverage generation on Node `22.20.0`; remaining deployment follow-up is to keep the hosted Vercel/Render environments aligned with the versioned repo state.
 
 ## Performance Metrics
 Managers and executives track CSR metrics:
@@ -391,6 +394,9 @@ Outcomes:
 - executives get structural insight
 
 Result: the full support system becomes understandable at a glance, enabling faster decisions and better service outcomes.
+
+## Overview Review Status
+Reviewed on March 8, 2026 after Session 15. The current overview still matches the implemented product direction, with the main status change being that automated local/CI validation is now a first-class part of the repo instead of relying on live Supabase-backed smoke checks by default.
 
 
 

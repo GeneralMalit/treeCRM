@@ -8,9 +8,13 @@
     "build": "tsc -p tsconfig.json",
     "start": "node dist/server.js",
     "lint": "eslint \"src/**/*.{ts,d.ts}\"",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage",
     "test:session3": "tsx scripts/session3CrudSmokeTest.ts",
     "test:session6": "tsx scripts/session6PortalSmokeTest.ts",
     "test:session10": "tsx scripts/session10E2eSmokeTest.ts",
+    "test:live": "npm run test:session3 && npm run test:session6 && npm run test:session10",
     "format": "prettier --write ."
   },
   "keywords": [
@@ -34,11 +38,15 @@
     "@types/express": "^5.0.5",
     "@types/jsonwebtoken": "^9.0.10",
     "@types/node": "^24.10.1",
+    "@types/supertest": "^7.2.0",
+    "@vitest/coverage-v8": "^4.0.18",
     "eslint": "^10.0.2",
     "eslint-config-prettier": "^10.1.8",
     "prettier": "^3.8.1",
+    "supertest": "^7.2.2",
     "tsx": "^4.20.6",
     "typescript": "^5.9.3",
-    "typescript-eslint": "^8.46.4"
+    "typescript-eslint": "^8.46.4",
+    "vitest": "^4.0.18"
   }
 }

@@ -37,7 +37,6 @@ import {
   fetchCaseWorkflowDetails,
   reassignCase,
   type CaseWorkflowDetails,
-  type CaseWorkflowEndorsement,
   type EndorsementDecision,
   type EndorsementStatus,
 } from "@/lib/caseWorkflow";
@@ -59,6 +58,16 @@ import {
   type PerformanceMetrics,
   type TeamMetricsSummary,
 } from "@/lib/employeeTree";
+import {
+  findSelectedNodeInTree,
+  formatUserDisplayName,
+  pickCaseNodeById,
+  pickInitialSelectedNode,
+  upsertCaseChatMessage,
+  upsertInternalMessage,
+  upsertWorkflowEndorsement,
+  type SelectedNode,
+} from "@/lib/employeeWorkspaceUtils";
 import {
   fetchEmployeeCaseMessages,
   fetchInternalChatContacts,
@@ -106,70 +115,10 @@ type ViewState =
   | { status: "error"; message: string }
   | { status: "ready"; data: ReadyState };
 
-type SelectedNode =
-  | { kind: "employee"; employee: EmployeeTreeEmployee }
-  | {
-    kind: "case";
-    employee: EmployeeTreeEmployee;
-    customer: EmployeeTreeCustomer;
-    caseItem: EmployeeTreeCase;
-  };
-
 type ActionFeedback = {
   type: "success" | "error";
   message: string;
 };
-
-function upsertCaseChatMessage(
-  messages: EmployeeCaseChatMessage[],
-  nextMessage: EmployeeCaseChatMessage,
-): EmployeeCaseChatMessage[] {
-  const byId = new Map(messages.map((message) => [message.id, message]));
-  byId.set(nextMessage.id, nextMessage);
-
-  return [...byId.values()].sort((a, b) => {
-    const byDate = new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
-    if (byDate !== 0) {
-      return byDate;
-    }
-
-    return a.id.localeCompare(b.id);
-  });
-}
-
-function upsertInternalMessage(
-  messages: InternalChatMessage[],
-  nextMessage: InternalChatMessage,
-): InternalChatMessage[] {
-  const byId = new Map(messages.map((message) => [message.id, message]));
-  byId.set(nextMessage.id, nextMessage);
-
-  return [...byId.values()].sort((a, b) => {
-    const byDate = new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
-    if (byDate !== 0) {
-      return byDate;
-    }
-
-    return a.id.localeCompare(b.id);
-  });
-}
-
-function upsertWorkflowEndorsement(
-  endorsements: CaseWorkflowEndorsement[],
-  nextEndorsement: CaseWorkflowEndorsement,
-): CaseWorkflowEndorsement[] {
-  const byId = new Map(endorsements.map((endorsement) => [endorsement.id, endorsement]));
-  byId.set(nextEndorsement.id, nextEndorsement);
-
-  return [...byId.values()].sort((a, b) => {
-    const byDate = new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
-    if (byDate !== 0) {
-      return byDate;
-    }
-
-    return b.id.localeCompare(a.id);
-  });
-}
 
 const statusStyleMap: Record<
   EmployeeTreeCase["status"],
@@ -212,10 +161,6 @@ function getCaseVisualStyle(caseItem: EmployeeTreeCase) {
   }
 
   return statusStyleMap[caseItem.status];
-}
-
-function formatUserDisplayName(user: { name?: string | null; email: string; role: Role }): string {
-  return `${user.name?.trim() || user.email} (${user.role})`;
 }
 
 function safeFormatDate(value: string): string {
@@ -291,61 +236,6 @@ function getEndorsementStatusChipColor(
     default:
       return "default";
   }
-}
-
-function pickInitialSelectedNode(employeeNodes: EmployeeTreeEmployee[]): SelectedNode | null {
-  const [firstEmployee] = employeeNodes;
-  if (!firstEmployee) {
-    return null;
-  }
-
-  for (const customer of firstEmployee.customers) {
-    const firstCase = customer.cases[0];
-    if (firstCase) {
-      return {
-        kind: "case",
-        employee: firstEmployee,
-        customer,
-        caseItem: firstCase,
-      };
-    }
-  }
-
-  return { kind: "employee", employee: firstEmployee };
-}
-
-function pickCaseNodeById(employeeNodes: EmployeeTreeEmployee[], caseId: string): SelectedNode | null {
-  for (const employee of employeeNodes) {
-    for (const customer of employee.customers) {
-      const caseItem = customer.cases.find((entry) => entry.id === caseId);
-      if (caseItem) {
-        return {
-          kind: "case",
-          employee,
-          customer,
-          caseItem,
-        };
-      }
-    }
-  }
-
-  return null;
-}
-
-function findSelectedNodeInTree(
-  employeeNodes: EmployeeTreeEmployee[],
-  selectedNode: SelectedNode | null,
-): SelectedNode | null {
-  if (!selectedNode) {
-    return pickInitialSelectedNode(employeeNodes);
-  }
-
-  if (selectedNode.kind === "employee") {
-    const employee = employeeNodes.find((node) => node.id === selectedNode.employee.id);
-    return employee ? { kind: "employee", employee } : pickInitialSelectedNode(employeeNodes);
-  }
-
-  return pickCaseNodeById(employeeNodes, selectedNode.caseItem.id) ?? pickInitialSelectedNode(employeeNodes);
 }
 
 export function EmployeeTreeWorkspace({ allowedRoles, title, description }: EmployeeTreeWorkspaceProps) {

@@ -63,7 +63,7 @@ function renderLegendSwatch(
   );
 }
 
-export function UnifiedTreeCanvas({
+function UnifiedTreeCanvasInner({
   employees,
   scope,
   focusEmployeeId,
@@ -103,14 +103,6 @@ export function UnifiedTreeCanvas({
     }
     return map;
   }, [seedLayout.nodes]);
-
-  // Reset pan/zoom on viewer or focus change.
-  useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    setPanOffset({ x: 0, y: 0 });
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    setZoom(1);
-  }, [scope.viewerId, focusEmployeeId]);
 
   // Create / update simulation.
   useEffect(() => {
@@ -160,7 +152,6 @@ export function UnifiedTreeCanvas({
     }
 
     return undefined;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [seedLayout]);
 
   // Cleanup.
@@ -305,14 +296,14 @@ export function UnifiedTreeCanvas({
           <Box>
             <Typography variant="h6">Tree View</Typography>
             <Typography variant="body2" color="text.secondary">
-              Click employee nodes to drill down. Use ← Back to return.
+              Click employee nodes to drill down. Use Back to return.
             </Typography>
           </Box>
 
           <Stack direction="row" spacing={1} alignItems="center">
             {canGoBack && (
               <Button size="small" variant="contained" onClick={onGoBack} sx={{ minWidth: 0 }}>
-                ← Back
+                Back
               </Button>
             )}
             <Button size="small" variant="outlined" onClick={() => setShowLegend((current) => !current)}>
@@ -499,7 +490,7 @@ export function UnifiedTreeCanvas({
                           fontSize={Math.max(12, 12 / zoom)}
                           fontWeight="700" fill="#475569"
                         >
-                          {node.expanded ? "−" : "+"}
+                          {node.expanded ? "-" : "+"}
                         </text>
                       </>
                     )}
@@ -556,4 +547,10 @@ export function UnifiedTreeCanvas({
       </Stack>
     </Box>
   );
+}
+
+export function UnifiedTreeCanvas(props: UnifiedTreeCanvasProps) {
+  const resetKey = `${props.scope.viewerId}:${props.focusEmployeeId ?? "root"}`;
+
+  return <UnifiedTreeCanvasInner key={resetKey} {...props} />;
 }

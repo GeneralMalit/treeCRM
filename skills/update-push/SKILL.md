@@ -18,10 +18,11 @@ description: Keep Sessions.md and OVERVIEW.md aligned after finishing work by re
 3. **Confirm consistency**
    - Re-open both files to ensure formatting and tone follow what previous entries use, and that no sections were accidentally truncated.
    - Triple-check for TODOs or follow-ups that need separate tickets and note them inline if nothing else is available.
+   - find semantic versioning and based on the changes, decide whether to update the version and how to update it.
 
 4. **Stage, commit, and push**
    - Run `git status` and then `git add -A` to stage all changes in Sessions, Overview, or other supporting files.
-   - Commit with a message consisting of 2–5 sentences that summarize the update (DO NOT SAY "SESSION" OR EXPLAIN THE WORK AS DOCUMENTATION CHANGES), focus on the delivered functionality, and describe why the codebase or plan moved forward.
+   - Commit with a message consisting of 2–5 sentences that summarize the update, focus on the delivered functionality, and describe why the codebase or plan moved forward.
    - Finish by running `git push` so the shared repository reflects the new documentation.
 
 ## Notes

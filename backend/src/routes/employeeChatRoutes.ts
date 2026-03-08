@@ -1,5 +1,11 @@
 import express from "express";
 import { isRole, type Role } from "../constants/roles";
+import {
+  canUsersChatInternally,
+  getAllowedInternalPeerRoles,
+  parseMessageBody,
+  parseUuidParam,
+} from "../domain/employeeChatLogic";
 import { requireAuth } from "../middleware/requireAuth";
 import { requireRole } from "../middleware/requireRole";
 import { createNotification } from "../services/notificationService";
@@ -46,51 +52,16 @@ type InternalMessageRow = {
   created_at: string;
 };
 
-type ValidationResult<T> = { data: T } | { error: string };
-
 const MESSAGE_TYPE_VALUES = ["text", "internal_note", "system"] as const;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-function isUuid(value: string): boolean {
-  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
-}
-
 function isMessageType(value: unknown): value is MessageType {
   return (
     typeof value === "string" && MESSAGE_TYPE_VALUES.includes(value as (typeof MESSAGE_TYPE_VALUES)[number])
   );
-}
-
-function parseUuidParam(raw: unknown, fieldName: string): ValidationResult<string> {
-  if (typeof raw !== "string" || !isUuid(raw)) {
-    return { error: `${fieldName} must be a valid UUID.` };
-  }
-
-  return { data: raw };
-}
-
-function parseMessageBody(body: unknown): ValidationResult<{ messageText: string }> {
-  if (!isRecord(body)) {
-    return { error: "Request body must be a JSON object." };
-  }
-
-  if (typeof body.messageText !== "string") {
-    return { error: "messageText must be a string." };
-  }
-
-  const messageText = body.messageText.trim();
-  if (!messageText) {
-    return { error: "messageText cannot be empty." };
-  }
-
-  if (messageText.length > 4000) {
-    return { error: "messageText must be at most 4000 characters." };
-  }
-
-  return { data: { messageText } };
 }
 
 function getDisplayName(user: { name?: string | null; email: string }): string {
@@ -203,27 +174,6 @@ function toInternalMessageRows(rows: unknown[]): InternalMessageRow[] {
       message_text: row.message_text as string,
       created_at: row.created_at as string,
     }));
-}
-
-function getAllowedInternalPeerRoles(role: Role): Role[] {
-  switch (role) {
-    case "CSR":
-      return ["Manager", "Executive", "Admin"];
-    case "Manager":
-      return ["CSR", "Executive", "Admin"];
-    case "Executive":
-      return ["CSR", "Manager", "Admin"];
-    case "Admin":
-      return ["CSR", "Manager", "Executive", "Admin"];
-    case "Customer":
-      return [];
-    default:
-      return [];
-  }
-}
-
-function canUsersChatInternally(roleA: Role, roleB: Role): boolean {
-  return getAllowedInternalPeerRoles(roleA).includes(roleB) && getAllowedInternalPeerRoles(roleB).includes(roleA);
 }
 
 function getRoleSortWeight(role: Role): number {

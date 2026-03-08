@@ -28,8 +28,8 @@ import {
   createPortalTicket,
   fetchPortalTickets,
   type PortalDashboardResponse,
-  type PortalTicketSummary,
 } from "@/lib/customerPortal";
+import { safeFormatDate, sortTicketsByLatest } from "@/lib/portalPageUtils";
 
 const TICKET_CATEGORIES = [
   "General Inquiry",
@@ -54,22 +54,6 @@ type ViewState =
         dashboard: PortalDashboardResponse;
       };
     };
-
-function safeFormatDate(value: string): string {
-  const parsed = new Date(value);
-  if (Number.isNaN(parsed.getTime())) {
-    return value;
-  }
-
-  return new Intl.DateTimeFormat("en-US", {
-    dateStyle: "medium",
-    timeStyle: "short",
-  }).format(parsed);
-}
-
-function sortTicketsByLatest(tickets: PortalTicketSummary[]): PortalTicketSummary[] {
-  return [...tickets].sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
-}
 
 export default function PortalPage() {
   const router = useRouter();
