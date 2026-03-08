@@ -23,8 +23,6 @@ Footer text: `(c) 2026 treeCRM by General Malit - v1.0.0`
 - `backend/`: Express 5, TypeScript, JWT auth, Socket.IO.
 - `supabase/`: database-related artifacts and SQL.
 - `docs/`: decision-complete implementation notes for major sessions.
-- `Sessions.md`: chronological implementation record.
-- `OVERVIEW.md`: product and architecture overview.
 
 ## Architecture
 
@@ -64,8 +62,6 @@ treeCRM/
     test/
   docs/
   supabase/
-  OVERVIEW.md
-  Sessions.md
   README.md
 ```
 
@@ -160,7 +156,5 @@ npm run version:sync
 
 ## Additional Docs
 
-- [Sessions.md](Sessions.md)
-- [OVERVIEW.md](OVERVIEW.md)
 - [docs/session_12_skill_tree_plan.md](docs/session_12_skill_tree_plan.md)
 - [docs/session_14_tree_view_ui_fixes_plan.md](docs/session_14_tree_view_ui_fixes_plan.md)
