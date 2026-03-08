@@ -11,11 +11,8 @@
 [![Supabase](https://img.shields.io/badge/Supabase-Postgres_%2B_Auth-3ECF8E?style=for-the-badge)](https://supabase.com/docs)
 [![Postgres](https://img.shields.io/badge/Postgres-Realtime-336791?style=for-the-badge)](https://www.postgresql.org/docs/)
 
-Current app version: `1.0.0`
 
 TreeCRM is a visual CRM and support platform. The backend handles auth, RBAC, workflow rules, chat routing, notifications, metrics, and admin operations. The frontend renders the employee tree workspace, customer portal, login flow, and admin surface.
-
-Footer text: `(c) 2026 treeCRM by General Malit - v1.0.0`
 
 ## What This Repo Contains
 
