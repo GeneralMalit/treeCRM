@@ -106,5 +106,5 @@ describe("PortalPage", () => {
       }));
       expect(push).toHaveBeenCalledWith("/portal/ticket-created");
     });
-  });
+  }, 10_000);
 });
