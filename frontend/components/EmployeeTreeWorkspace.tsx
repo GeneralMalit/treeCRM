@@ -108,7 +108,6 @@ type ViewState =
 
 type SelectedNode =
   | { kind: "employee"; employee: EmployeeTreeEmployee }
-  | { kind: "customer"; employee: EmployeeTreeEmployee; customer: EmployeeTreeCustomer }
   | {
     kind: "case";
     employee: EmployeeTreeEmployee;
@@ -172,22 +171,27 @@ function upsertWorkflowEndorsement(
   });
 }
 
-const priorityStyleMap: Record<
-  EmployeeTreeCase["priority"],
-  { border: string; background: string; chipColor: "error" | "warning" | "default" }
+const statusStyleMap: Record<
+  EmployeeTreeCase["status"],
+  { border: string; background: string; chipColor: "primary" | "warning" | "success" | "default" }
 > = {
-  High: {
-    border: "#DC2626",
-    background: "#FEF2F2",
-    chipColor: "error",
+  Open: {
+    border: "#3B82F6",
+    background: "#EFF6FF",
+    chipColor: "primary",
   },
-  Medium: {
-    border: "#EAB308",
+  "In Progress": {
+    border: "#D97706",
     background: "#FFFBEB",
     chipColor: "warning",
   },
-  Low: {
-    border: "#9CA3AF",
+  Resolved: {
+    border: "#16A34A",
+    background: "#F0FDF4",
+    chipColor: "success",
+  },
+  Dropped: {
+    border: "#6B7280",
     background: "#F8FAFC",
     chipColor: "default",
   },
@@ -207,7 +211,7 @@ function getCaseVisualStyle(caseItem: EmployeeTreeCase) {
     return endorsedCaseStyle;
   }
 
-  return priorityStyleMap[caseItem.priority];
+  return statusStyleMap[caseItem.status];
 }
 
 function formatUserDisplayName(user: { name?: string | null; email: string; role: Role }): string {
@@ -224,6 +228,28 @@ function safeFormatDate(value: string): string {
     dateStyle: "medium",
     timeStyle: "short",
   }).format(parsed);
+}
+
+function formatContactInfoValue(value: unknown): string {
+  if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") {
+    return String(value);
+  }
+
+  if (value === null || typeof value === "undefined") {
+    return "N/A";
+  }
+
+  try {
+    return JSON.stringify(value);
+  } catch {
+    return "N/A";
+  }
+}
+
+function getContactInfoEntries(contactInfo: Record<string, unknown>): Array<{ key: string; value: string }> {
+  return Object.entries(contactInfo)
+    .sort(([left], [right]) => left.localeCompare(right))
+    .map(([key, value]) => ({ key, value: formatContactInfoValue(value) }));
 }
 
 function formatCustomerSatisfaction(value: number | null): string {
@@ -273,22 +299,19 @@ function pickInitialSelectedNode(employeeNodes: EmployeeTreeEmployee[]): Selecte
     return null;
   }
 
-  const firstCustomer = firstEmployee.customers[0];
-  if (!firstCustomer) {
-    return { kind: "employee", employee: firstEmployee };
+  for (const customer of firstEmployee.customers) {
+    const firstCase = customer.cases[0];
+    if (firstCase) {
+      return {
+        kind: "case",
+        employee: firstEmployee,
+        customer,
+        caseItem: firstCase,
+      };
+    }
   }
 
-  const firstCase = firstCustomer.cases[0];
-  if (!firstCase) {
-    return { kind: "customer", employee: firstEmployee, customer: firstCustomer };
-  }
-
-  return {
-    kind: "case",
-    employee: firstEmployee,
-    customer: firstCustomer,
-    caseItem: firstCase,
-  };
+  return { kind: "employee", employee: firstEmployee };
 }
 
 function pickCaseNodeById(employeeNodes: EmployeeTreeEmployee[], caseId: string): SelectedNode | null {
@@ -322,16 +345,6 @@ function findSelectedNodeInTree(
     return employee ? { kind: "employee", employee } : pickInitialSelectedNode(employeeNodes);
   }
 
-  if (selectedNode.kind === "customer") {
-    const employee = employeeNodes.find((node) => node.id === selectedNode.employee.id);
-    if (!employee) {
-      return pickInitialSelectedNode(employeeNodes);
-    }
-
-    const customer = employee.customers.find((node) => node.id === selectedNode.customer.id);
-    return customer ? { kind: "customer", employee, customer } : pickInitialSelectedNode(employeeNodes);
-  }
-
   return pickCaseNodeById(employeeNodes, selectedNode.caseItem.id) ?? pickInitialSelectedNode(employeeNodes);
 }
 
@@ -339,7 +352,7 @@ export function EmployeeTreeWorkspace({ allowedRoles, title, description }: Empl
   const router = useRouter();
   const [state, setState] = useState<ViewState>({ status: "loading" });
   const [selectedNode, setSelectedNode] = useState<SelectedNode | null>(null);
-  const [expandedNodeIds, setExpandedNodeIds] = useState<Set<string>>(new Set());
+  const [focusStack, setFocusStack] = useState<string[]>([]);
   const [caseMetaCaseId, setCaseMetaCaseId] = useState<string | null>(null);
   const [caseMetaLoading, setCaseMetaLoading] = useState(false);
   const [caseMetaError, setCaseMetaError] = useState<string | null>(null);
@@ -409,7 +422,6 @@ export function EmployeeTreeWorkspace({ allowedRoles, title, description }: Empl
   const unifiedSelectedNodeId = useMemo(() => {
     if (!selectedNode) return null;
     if (selectedNode.kind === "employee") return selectedNode.employee.id;
-    if (selectedNode.kind === "customer") return `cust:${selectedNode.customer.id}`;
     if (selectedNode.kind === "case") return `case:${selectedNode.caseItem.id}`;
     return null;
   }, [selectedNode]);
@@ -527,32 +539,30 @@ export function EmployeeTreeWorkspace({ allowedRoles, title, description }: Empl
   // Reset expanded nodes when tree data reloads
   useEffect(() => {
     if (state.status !== "ready") {
-      setExpandedNodeIds(new Set());
+      setFocusStack([]);
     }
   }, [state]);
 
-  const handleToggleExpand = useCallback((nodeId: string) => {
-    setExpandedNodeIds((prev) => {
-      const next = new Set(prev);
-      if (next.has(nodeId)) {
-        next.delete(nodeId);
-      } else {
-        next.add(nodeId);
+  const currentFocusEmployeeId = focusStack.length > 0 ? focusStack[focusStack.length - 1] : null;
+
+  const handleDrillDown = useCallback((employeeId: string) => {
+    setFocusStack((prev) => {
+      const currentEmployeeId = prev.length > 0 ? prev[prev.length - 1] : viewerId;
+      if (currentEmployeeId === employeeId) {
+        return prev;
       }
-      return next;
+
+      return [...prev, employeeId];
     });
+  }, [viewerId]);
+
+  const handleGoBack = useCallback(() => {
+    setFocusStack((prev) => prev.slice(0, -1));
   }, []);
 
   const handleSelectEmployeeNode = useCallback((employee: EmployeeTreeEmployee) => {
     setSelectedNode({ kind: "employee", employee });
   }, []);
-
-  const handleSelectCustomerNode = useCallback(
-    (employee: EmployeeTreeEmployee, customer: EmployeeTreeCustomer) => {
-      setSelectedNode({ kind: "customer", employee, customer });
-    },
-    [],
-  );
 
   const handleSelectCaseNode = useCallback(
     (employee: EmployeeTreeEmployee, customer: EmployeeTreeCustomer, caseItem: EmployeeTreeCase) => {
@@ -1494,39 +1504,8 @@ export function EmployeeTreeWorkspace({ allowedRoles, title, description }: Empl
       );
     }
 
-    if (selectedNode.kind === "customer") {
-      return (
-        <Stack spacing={1.5}>
-          <Typography variant="h6">Customer</Typography>
-          <Typography>Company: {selectedNode.customer.company}</Typography>
-          <Typography>Customer User ID: {selectedNode.customer.userId}</Typography>
-          <Typography>Linked Employee: {selectedNode.employee.name ?? selectedNode.employee.email}</Typography>
-          <Typography>Cases: {selectedNode.customer.cases.length}</Typography>
-          <Typography color="text.secondary">
-            Created: {safeFormatDate(selectedNode.customer.createdAt)}
-          </Typography>
-          <Typography variant="body2" color="text.secondary">
-            Contact Info
-          </Typography>
-          <Box
-            component="pre"
-            sx={{
-              m: 0,
-              p: 1.5,
-              fontFamily: "monospace",
-              fontSize: "0.75rem",
-              borderRadius: 1,
-              backgroundColor: "#F3F4F6",
-              overflowX: "auto",
-            }}
-          >
-            {JSON.stringify(selectedNode.customer.contactInfo, null, 2)}
-          </Box>
-        </Stack>
-      );
-    }
-
     const caseStyle = getCaseVisualStyle(selectedNode.caseItem);
+    const contactInfoEntries = getContactInfoEntries(selectedNode.customer.contactInfo);
     const selectedTags = caseTags.filter((tag) => selectedTagIds.includes(tag.id));
     const isSelectedCaseMetaCurrent = caseMetaCaseId === selectedNode.caseItem.id;
     const isSelectedWorkflowCurrent = workflowCaseId === selectedNode.caseItem.id;
@@ -1542,16 +1521,13 @@ export function EmployeeTreeWorkspace({ allowedRoles, title, description }: Empl
 
     return (
       <Stack spacing={1.5}>
-        <Typography variant="h6">Case</Typography>
-        <Typography>Title: {selectedNode.caseItem.title}</Typography>
+        <Typography variant="h6">Customer / Case</Typography>
+        <Typography>Customer Name: {selectedNode.customer.company}</Typography>
+        <Typography>Customer User ID: {selectedNode.customer.userId}</Typography>
+        <Typography>Linked Employee: {selectedNode.employee.name ?? selectedNode.employee.email}</Typography>
+        <Typography>Case Reference: {selectedNode.caseItem.title}</Typography>
         <Stack direction="row" spacing={1}>
-          <Chip size="small" label={`Status: ${selectedNode.caseItem.status}`} variant="outlined" />
-          <Chip
-            size="small"
-            color={caseStyle.chipColor}
-            label={`Priority: ${selectedNode.caseItem.priority}`}
-            variant="filled"
-          />
+          <Chip size="small" color={caseStyle.chipColor} label={`Status: ${selectedNode.caseItem.status}`} variant="filled" />
           {selectedNode.caseItem.hasPendingEndorsement && (
             <Chip
               size="small"
@@ -1561,10 +1537,8 @@ export function EmployeeTreeWorkspace({ allowedRoles, title, description }: Empl
             />
           )}
         </Stack>
-        <Typography>Employee: {selectedNode.employee.name ?? selectedNode.employee.email}</Typography>
-        <Typography>Customer: {selectedNode.customer.company}</Typography>
         <Typography color="text.secondary">
-          Updated: {safeFormatDate(selectedNode.caseItem.updatedAt)}
+          Last Updated: {safeFormatDate(selectedNode.caseItem.updatedAt)}
         </Typography>
         <Typography color="text.secondary">
           Created: {safeFormatDate(selectedNode.caseItem.createdAt)}
@@ -1581,6 +1555,35 @@ export function EmployeeTreeWorkspace({ allowedRoles, title, description }: Empl
           <Typography variant="body2">
             {selectedNode.caseItem.description || "No description was provided."}
           </Typography>
+        </Box>
+        <Typography variant="body2">Contact Info</Typography>
+        {contactInfoEntries.length === 0 && (
+          <Typography variant="body2" color="text.secondary">
+            No contact info was provided.
+          </Typography>
+        )}
+        {contactInfoEntries.length > 0 && (
+          <Stack spacing={0.75}>
+            {contactInfoEntries.map((entry) => (
+              <Typography key={entry.key} variant="body2">
+                {entry.key}: {entry.value}
+              </Typography>
+            ))}
+          </Stack>
+        )}
+        <Box
+          component="pre"
+          sx={{
+            m: 0,
+            p: 1.5,
+            fontFamily: "monospace",
+            fontSize: "0.75rem",
+            borderRadius: 1,
+            backgroundColor: "#F3F4F6",
+            overflowX: "auto",
+          }}
+        >
+          {JSON.stringify(selectedNode.customer.contactInfo, null, 2)}
         </Box>
 
         <Divider />
@@ -2180,12 +2183,6 @@ export function EmployeeTreeWorkspace({ allowedRoles, title, description }: Empl
 
         <Stack direction={{ xs: "column", lg: "row" }} spacing={2}>
           <Paper elevation={1} sx={{ p: 2, flex: 1.3 }}>
-            <Typography variant="h6">Skill Tree Graph</Typography>
-            <Typography variant="body2" color="text.secondary" sx={{ mb: 1.5 }}>
-              Graph-first employee hierarchy with focused CSR radial case rings.
-            </Typography>
-            <Divider sx={{ mb: 1.5 }} />
-
             {state.status === "loading" && <Typography color="text.secondary">Loading tree data...</Typography>}
 
             {state.status === "ready" && state.data.tree.data.length === 0 && (
@@ -2196,11 +2193,12 @@ export function EmployeeTreeWorkspace({ allowedRoles, title, description }: Empl
               <UnifiedTreeCanvas
                 employees={employeeNodes}
                 scope={state.data.tree.scope}
-                expandedNodeIds={expandedNodeIds}
+                focusEmployeeId={currentFocusEmployeeId}
                 selectedNodeId={unifiedSelectedNodeId}
-                onToggleExpand={handleToggleExpand}
+                canGoBack={focusStack.length > 0}
+                onDrillDown={handleDrillDown}
+                onGoBack={handleGoBack}
                 onSelectEmployee={handleSelectEmployeeNode}
-                onSelectCustomer={handleSelectCustomerNode}
                 onSelectCase={handleSelectCaseNode}
               />
             )}

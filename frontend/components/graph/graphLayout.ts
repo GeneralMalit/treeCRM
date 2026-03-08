@@ -4,6 +4,7 @@ import type {
   SkillTreeGraphModel,
 } from "@/lib/employeeGraph";
 import type { EmployeeTreeCase, EmployeeTreeCustomer, EmployeeTreeEmployee } from "@/lib/employeeTree";
+import { TREE_PHYSICS } from "./treePhysicsManifest";
 
 export type GraphPoint = {
   x: number;
@@ -271,7 +272,6 @@ export function layoutSkillTreeGraph(model: SkillTreeGraphModel): SkillTreeCanva
 /* ---------- Unified Tree Layout ---------- */
 
 import type { UnifiedTreeModel, UnifiedTreeNode } from "@/lib/employeeGraph";
-import type { CasePriority } from "@/lib/employeeTree";
 
 export type UnifiedNodeLayout = {
   node: UnifiedTreeNode;
@@ -282,27 +282,14 @@ export type UnifiedNodeLayout = {
 
 export type UnifiedEdgeLayout = {
   id: string;
-  fromX: number;
-  fromY: number;
-  toX: number;
-  toY: number;
+  fromId: string;
+  toId: string;
   style: "dashed" | "solid";
-};
-
-export type UnifiedPriorityArc = {
-  parentNodeId: string;
-  priority: CasePriority;
-  cx: number;
-  cy: number;
-  radius: number;
-  startAngle: number;
-  endAngle: number;
 };
 
 export type UnifiedCanvasLayout = {
   nodes: UnifiedNodeLayout[];
   edges: UnifiedEdgeLayout[];
-  arcs: UnifiedPriorityArc[];
   /** Bounding box for zoom-to-fit. */
   minX: number;
   minY: number;
@@ -310,53 +297,51 @@ export type UnifiedCanvasLayout = {
   maxY: number;
 };
 
-const UNIFIED_CHILD_SPACING = 160;
-const UNIFIED_FAN_RADIUS = 200;
-const UNIFIED_FAN_START = -160;
-const UNIFIED_FAN_END = -20;
-const UNIFIED_NODE_RADIUS_EMPLOYEE = 32;
-const UNIFIED_NODE_RADIUS_CUSTOMER = 26;
-const UNIFIED_NODE_RADIUS_CASE = 20;
-const UNIFIED_CASE_RING_HIGH = 90;
-const UNIFIED_CASE_RING_MEDIUM = 140;
-const UNIFIED_CASE_RING_LOW = 190;
-const UNIFIED_CASE_RING_START = -160;
-const UNIFIED_CASE_RING_END = -20;
+const MIN_NODE_GAP = TREE_PHYSICS.minNodeGap;
+const RELAXATION_ITERATIONS = 90;
+const SPRING_STRENGTH = 0.12;
+const UNIFIED_FAN_RADIUS_BASE = TREE_PHYSICS.fanRadiusBase;
+const UNIFIED_FAN_RADIUS_STEP = TREE_PHYSICS.fanRadiusStep;
+const UNIFIED_FAN_START = TREE_PHYSICS.fanStartAngle;
+const UNIFIED_FAN_END = TREE_PHYSICS.fanEndAngle;
+const UNIFIED_NODE_RADIUS_EMPLOYEE = TREE_PHYSICS.employeeRadius;
+const UNIFIED_NODE_RADIUS_CASE = TREE_PHYSICS.caseRadius;
 
 function getNodeRadius(kind: UnifiedTreeNode["kind"]): number {
   switch (kind) {
     case "employee":
       return UNIFIED_NODE_RADIUS_EMPLOYEE;
-    case "customer":
-      return UNIFIED_NODE_RADIUS_CUSTOMER;
     case "case":
       return UNIFIED_NODE_RADIUS_CASE;
   }
 }
 
-function getCaseRingRadius(priority: CasePriority): number {
-  switch (priority) {
-    case "High":
-      return UNIFIED_CASE_RING_HIGH;
-    case "Medium":
-      return UNIFIED_CASE_RING_MEDIUM;
-    case "Low":
-    default:
-      return UNIFIED_CASE_RING_LOW;
+function getCollisionRadius(node: UnifiedTreeNode): number {
+  const base = getNodeRadius(node.kind);
+  const labelPadding = node.kind === "employee" ? 38 : 30;
+  const labelDensity = Math.min(18, Math.max(0, node.label.length - 8) * 0.85);
+  return base + labelPadding + labelDensity;
+}
+
+function getFanRadius(childCount: number): number {
+  if (childCount <= 1) {
+    return UNIFIED_FAN_RADIUS_BASE;
   }
+
+  return UNIFIED_FAN_RADIUS_BASE + (childCount - 1) * UNIFIED_FAN_RADIUS_STEP;
 }
 
 export function layoutUnifiedTree(model: UnifiedTreeModel): UnifiedCanvasLayout {
   const positions = new Map<string, GraphPoint>();
+  const basePositions = new Map<string, GraphPoint>();
   const nodeLayouts: UnifiedNodeLayout[] = [];
   const edgeLayouts: UnifiedEdgeLayout[] = [];
-  const arcs: UnifiedPriorityArc[] = [];
+  const nodeById = new Map(model.nodes.map((node) => [node.id, node]));
 
   if (model.nodes.length === 0) {
-    return { nodes: [], edges: [], arcs: [], minX: -400, minY: -400, maxX: 400, maxY: 400 };
+    return { nodes: [], edges: [], minX: -400, minY: -400, maxX: 400, maxY: 400 };
   }
 
-  // Index by parent
   const childrenByParent = new Map<string | null, UnifiedTreeNode[]>();
   for (const node of model.nodes) {
     const children = childrenByParent.get(node.parentId) ?? [];
@@ -364,123 +349,149 @@ export function layoutUnifiedTree(model: UnifiedTreeModel): UnifiedCanvasLayout 
     childrenByParent.set(node.parentId, children);
   }
 
-  // Root at origin
-  const root = model.nodes.find((n) => n.id === model.rootId);
+  for (const children of childrenByParent.values()) {
+    children.sort((left, right) => left.label.localeCompare(right.label));
+  }
+
+  const root = model.nodes.find((node) => node.id === model.rootId);
   if (!root) {
-    return { nodes: [], edges: [], arcs: [], minX: -400, minY: -400, maxX: 400, maxY: 400 };
+    return { nodes: [], edges: [], minX: -400, minY: -400, maxX: 400, maxY: 400 };
   }
 
   positions.set(root.id, { x: 0, y: 0 });
+  basePositions.set(root.id, { x: 0, y: 0 });
 
-  // Place children recursively.
-  // Non-case children fan out above their parent in a semicircle.
-  // Case children use radial priority rings around their parent.
   function placeChildren(parentId: string, parentX: number, parentY: number): void {
     const children = childrenByParent.get(parentId) ?? [];
     if (children.length === 0) {
       return;
     }
 
-    // Separate cases from non-cases
-    const caseChildren = children.filter((c) => c.kind === "case");
-    const nonCaseChildren = children.filter((c) => c.kind !== "case");
+    const fanRadius = getFanRadius(children.length);
+    const angles = distributeAngles(children.length, UNIFIED_FAN_START, UNIFIED_FAN_END);
 
-    // Place non-case children in a fan above parent
-    if (nonCaseChildren.length > 0) {
-      const fanRadius = UNIFIED_FAN_RADIUS;
-      const angles = distributeAngles(nonCaseChildren.length, UNIFIED_FAN_START, UNIFIED_FAN_END);
-
-      nonCaseChildren.forEach((child, index) => {
-        const angle = angles[index] ?? ((UNIFIED_FAN_START + UNIFIED_FAN_END) / 2);
-        const pos = polarToCartesian(parentX, parentY, fanRadius, angle);
-
-        positions.set(child.id, pos);
-        placeChildren(child.id, pos.x, pos.y);
-      });
-    }
-
-    // Place case children in priority rings around parent
-    if (caseChildren.length > 0) {
-      const casesByPriority: Record<CasePriority, UnifiedTreeNode[]> = {
-        High: [],
-        Medium: [],
-        Low: [],
-      };
-
-      for (const c of caseChildren) {
-        const p = c.priority ?? "Low";
-        casesByPriority[p].push(c);
-      }
-
-      const priorities: CasePriority[] = ["High", "Medium", "Low"];
-      for (const priority of priorities) {
-        const cases = casesByPriority[priority];
-        if (cases.length === 0) {
-          continue;
-        }
-
-        const ringRadius = getCaseRingRadius(priority);
-        const ringAngles = distributeAngles(cases.length, UNIFIED_CASE_RING_START, UNIFIED_CASE_RING_END);
-
-        // Add arc descriptor for visual ring guide
-        arcs.push({
-          parentNodeId: parentId,
-          priority,
-          cx: parentX,
-          cy: parentY,
-          radius: ringRadius,
-          startAngle: UNIFIED_CASE_RING_START,
-          endAngle: UNIFIED_CASE_RING_END,
-        });
-
-        cases.forEach((caseNode, idx) => {
-          const angle = ringAngles[idx] ?? ((UNIFIED_CASE_RING_START + UNIFIED_CASE_RING_END) / 2);
-          const pos = polarToCartesian(parentX, parentY, ringRadius, angle);
-          positions.set(caseNode.id, pos);
-        });
-      }
-    }
+    children.forEach((child, index) => {
+      const angle = angles[index] ?? ((UNIFIED_FAN_START + UNIFIED_FAN_END) / 2);
+      const position = polarToCartesian(parentX, parentY, fanRadius, angle);
+      positions.set(child.id, position);
+      basePositions.set(child.id, position);
+      placeChildren(child.id, position.x, position.y);
+    });
   }
 
   placeChildren(root.id, 0, 0);
 
-  // Build node layouts
-  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+  // Collision relaxation around base layout.
+  const nodeIds = model.nodes.map((node) => node.id);
+  for (let iteration = 0; iteration < RELAXATION_ITERATIONS; iteration += 1) {
+    for (const nodeId of nodeIds) {
+      if (nodeId === root.id) {
+        continue;
+      }
+
+      const current = positions.get(nodeId);
+      const anchor = basePositions.get(nodeId);
+      if (!current || !anchor) {
+        continue;
+      }
+
+      current.x += (anchor.x - current.x) * SPRING_STRENGTH;
+      current.y += (anchor.y - current.y) * SPRING_STRENGTH;
+    }
+
+    for (let i = 0; i < nodeIds.length; i += 1) {
+      const leftId = nodeIds[i];
+      const leftNode = nodeById.get(leftId);
+      const leftPosition = positions.get(leftId);
+      if (!leftNode || !leftPosition) {
+        continue;
+      }
+
+      for (let j = i + 1; j < nodeIds.length; j += 1) {
+        const rightId = nodeIds[j];
+        const rightNode = nodeById.get(rightId);
+        const rightPosition = positions.get(rightId);
+        if (!rightNode || !rightPosition) {
+          continue;
+        }
+
+        const dx = rightPosition.x - leftPosition.x;
+        const dy = rightPosition.y - leftPosition.y;
+        const distance = Math.hypot(dx, dy) || 0.0001;
+        const requiredDistance = Math.max(
+          MIN_NODE_GAP,
+          getCollisionRadius(leftNode) + getCollisionRadius(rightNode),
+        );
+
+        if (distance >= requiredDistance) {
+          continue;
+        }
+
+        const overlap = requiredDistance - distance;
+        const ux = dx / distance;
+        const uy = dy / distance;
+
+        if (leftId === root.id) {
+          rightPosition.x += ux * overlap;
+          rightPosition.y += uy * overlap;
+          continue;
+        }
+
+        if (rightId === root.id) {
+          leftPosition.x -= ux * overlap;
+          leftPosition.y -= uy * overlap;
+          continue;
+        }
+
+        const halfShift = overlap / 2;
+        leftPosition.x -= ux * halfShift;
+        leftPosition.y -= uy * halfShift;
+        rightPosition.x += ux * halfShift;
+        rightPosition.y += uy * halfShift;
+      }
+    }
+
+    const rootPosition = positions.get(root.id);
+    if (rootPosition) {
+      rootPosition.x = 0;
+      rootPosition.y = 0;
+    }
+  }
+
+  let minX = Infinity;
+  let minY = Infinity;
+  let maxX = -Infinity;
+  let maxY = -Infinity;
 
   for (const node of model.nodes) {
-    const pos = positions.get(node.id);
-    if (!pos) {
+    const position = positions.get(node.id);
+    if (!position) {
       continue;
     }
 
     const radius = getNodeRadius(node.kind);
-    nodeLayouts.push({ node, x: pos.x, y: pos.y, radius });
+    nodeLayouts.push({ node, x: position.x, y: position.y, radius });
 
-    minX = Math.min(minX, pos.x - radius - 60);
-    minY = Math.min(minY, pos.y - radius - 60);
-    maxX = Math.max(maxX, pos.x + radius + 60);
-    maxY = Math.max(maxY, pos.y + radius + 60);
+    const collisionRadius = getCollisionRadius(node);
+    minX = Math.min(minX, position.x - collisionRadius - 30);
+    minY = Math.min(minY, position.y - collisionRadius - 30);
+    maxX = Math.max(maxX, position.x + collisionRadius + 30);
+    maxY = Math.max(maxY, position.y + collisionRadius + 30);
   }
 
-  // Build edge layouts
   for (const edge of model.edges) {
-    const from = positions.get(edge.fromId);
-    const to = positions.get(edge.toId);
-    if (!from || !to) {
+    if (!positions.has(edge.fromId) || !positions.has(edge.toId)) {
       continue;
     }
 
     edgeLayouts.push({
       id: edge.id,
-      fromX: from.x,
-      fromY: from.y,
-      toX: to.x,
-      toY: to.y,
+      fromId: edge.fromId,
+      toId: edge.toId,
       style: edge.style,
     });
   }
 
-  // Ensure minimum bounding box
   if (minX === Infinity) {
     minX = -400;
     minY = -400;
@@ -494,6 +505,5 @@ export function layoutUnifiedTree(model: UnifiedTreeModel): UnifiedCanvasLayout 
   maxX += 120;
   maxY += 120;
 
-  return { nodes: nodeLayouts, edges: edgeLayouts, arcs, minX, minY, maxX, maxY };
+  return { nodes: nodeLayouts, edges: edgeLayouts, minX, minY, maxX, maxY };
 }
-

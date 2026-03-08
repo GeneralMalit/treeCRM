@@ -317,6 +317,36 @@ async function run() {
     });
     ensureOk(csrBResolved.response, csrBResolved.body, "CSR B failed to resolve case.");
 
+    const csrBTreeAfterResolved = await request<
+      Array<{ customers: Array<{ cases: Array<{ id: string }> }> }>
+    >(baseUrl, "/employee/tree", {
+      token: csrBToken,
+    });
+    ensureOk(csrBTreeAfterResolved.response, csrBTreeAfterResolved.body, "Failed to load CSR B tree after resolve.");
+    const csrSeesResolvedCase = (csrBTreeAfterResolved.body.data ?? []).some((employeeNode) =>
+      employeeNode.customers.some((customer) =>
+        customer.cases.some((caseItem) => caseItem.id === ticketId),
+      ),
+    );
+    assert(!csrSeesResolvedCase, "CSR tree should hide resolved assigned cases.");
+
+    const managerTreeAfterResolved = await request<
+      Array<{ customers: Array<{ cases: Array<{ id: string }> }> }>
+    >(baseUrl, "/employee/tree", {
+      token: managerToken,
+    });
+    ensureOk(
+      managerTreeAfterResolved.response,
+      managerTreeAfterResolved.body,
+      "Failed to load manager tree after CSR resolved case.",
+    );
+    const managerSeesResolvedCase = (managerTreeAfterResolved.body.data ?? []).some((employeeNode) =>
+      employeeNode.customers.some((customer) =>
+        customer.cases.some((caseItem) => caseItem.id === ticketId),
+      ),
+    );
+    assert(managerSeesResolvedCase, "Manager tree should still include resolved cases in managerial scope.");
+
     const submitCsat = await request<{ rating: number }>(
       baseUrl,
       `/portal/tickets/${ticketId}/customer-satisfaction`,

@@ -1027,7 +1027,7 @@ router.get("/employee/tree", requireAuth, requireRole("CSR", "Manager", "Executi
     });
   }
 
-  const filteredCases = cases.filter((caseItem) => {
+  const scopedCasesForMetrics = cases.filter((caseItem) => {
     if (viewer.role === "CSR") {
       return caseItem.assigned_to === viewer.sub;
     }
@@ -1035,7 +1035,12 @@ router.get("/employee/tree", requireAuth, requireRole("CSR", "Manager", "Executi
     return typeof caseItem.assigned_to === "string" && userMap.has(caseItem.assigned_to);
   });
 
-  const caseIdsInScope = filteredCases.map((caseItem) => caseItem.id);
+  const visibleCasesForTree =
+    viewer.role === "CSR"
+      ? scopedCasesForMetrics.filter((caseItem) => caseItem.status !== "Resolved")
+      : scopedCasesForMetrics;
+
+  const caseIdsInScope = scopedCasesForMetrics.map((caseItem) => caseItem.id);
   let pendingEndorsements: EndorsementRow[] = [];
 
   if (caseIdsInScope.length > 0) {
@@ -1064,15 +1069,26 @@ router.get("/employee/tree", requireAuth, requireRole("CSR", "Manager", "Executi
 
   const customersById = new Map<string, CustomerRow>(customers.map((customer) => [customer.id, customer]));
 
-  const casesByEmployeeId = new Map<string, CaseRow[]>();
-  for (const caseItem of filteredCases) {
+  const casesByEmployeeIdForMetrics = new Map<string, CaseRow[]>();
+  for (const caseItem of scopedCasesForMetrics) {
     if (!caseItem.assigned_to) {
       continue;
     }
 
-    const current = casesByEmployeeId.get(caseItem.assigned_to) ?? [];
+    const current = casesByEmployeeIdForMetrics.get(caseItem.assigned_to) ?? [];
     current.push(caseItem);
-    casesByEmployeeId.set(caseItem.assigned_to, current);
+    casesByEmployeeIdForMetrics.set(caseItem.assigned_to, current);
+  }
+
+  const casesByEmployeeIdForTree = new Map<string, CaseRow[]>();
+  for (const caseItem of visibleCasesForTree) {
+    if (!caseItem.assigned_to) {
+      continue;
+    }
+
+    const current = casesByEmployeeIdForTree.get(caseItem.assigned_to) ?? [];
+    current.push(caseItem);
+    casesByEmployeeIdForTree.set(caseItem.assigned_to, current);
   }
 
   const employeeIds =
@@ -1097,7 +1113,7 @@ router.get("/employee/tree", requireAuth, requireRole("CSR", "Manager", "Executi
   const employeeMetricsById = new Map<string, PerformanceMetrics>(
     employees.map((employee) => [
       employee.id,
-      buildPerformanceMetrics(casesByEmployeeId.get(employee.id) ?? [], resolvedTodayThresholdEpoch),
+      buildPerformanceMetrics(casesByEmployeeIdForMetrics.get(employee.id) ?? [], resolvedTodayThresholdEpoch),
     ]),
   );
 
@@ -1159,7 +1175,7 @@ router.get("/employee/tree", requireAuth, requireRole("CSR", "Manager", "Executi
   const scopeMetrics = aggregatePerformanceMetrics(Array.from(employeeMetricsById.values()));
 
   const tree = employees.map((employee) => {
-    const employeeCases = (casesByEmployeeId.get(employee.id) ?? []).sort((a, b) => {
+    const employeeCases = (casesByEmployeeIdForTree.get(employee.id) ?? []).sort((a, b) => {
       const priorityCompare = getPrioritySortWeight(a.priority) - getPrioritySortWeight(b.priority);
       if (priorityCompare !== 0) {
         return priorityCompare;
@@ -1247,7 +1263,7 @@ router.get("/employee/tree", requireAuth, requireRole("CSR", "Manager", "Executi
     viewerRole: viewer.role,
     employeeCount: tree.length,
     customerCount: visibleCustomerIds.size,
-    caseCount: filteredCases.length,
+    caseCount: visibleCasesForTree.length,
     metrics: scopeMetrics,
   };
 

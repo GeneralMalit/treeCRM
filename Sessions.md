@@ -496,3 +496,46 @@ This checklist tracks the completion of each TreeCRM development session. Each s
   - verify Manager drill flow (Manager -> CSR -> customer -> cases)
   - verify Executive drill flow (Executive -> Manager -> CSR -> customer -> cases)
   - confirm pan/zoom and reset-view behavior across desktop and mobile-sized viewports
+
+---
+
+## Session 14 - Tree View UX Fixes, CSR Visibility Rules, and Customer/Case Unification
+
+**Objective:** Resolve Tree View readability issues, simplify node semantics, and align CSR visibility behavior with active ownership expectations.
+
+### Plan Document Location
+- docs/session_14_tree_view_ui_fixes_plan.md
+- Absolute path: d:\Desktop\Main\Files\Programming\Projects\treeCRM\docs\session_14_tree_view_ui_fixes_plan.md
+
+### Tasks
+- [x] Hide resolved assigned cases from CSR tree visibility while preserving metrics history.
+- [x] Replace separate customer layer in the unified canvas with direct combined customer/case nodes.
+- [x] Add collision-aware dynamic layout spacing with expansion animation push-back.
+- [x] Remove in-node ongoing/resolved metric text and hide priority visuals in the tree.
+- [x] Merge customer and case details into one combined details panel flow.
+- [x] Remove redundant "Skill Tree Graph" framing and declutter legend with collapsed toggle.
+- [x] Extend Session 10 smoke test assertions for CSR/manager resolved visibility behavior.
+- [x] Run backend/frontend lint + build checks and rerun Session 10 smoke test.
+- [ ] Complete deployed-environment manual regression pass.
+
+**Target Outcome:**
+- Tree View remains readable during dense expansion
+- CSR sees only active assigned customer/case nodes (resolved hidden)
+- Customer/case interaction is unified into one node and one details context
+- Priority remains operational for CSR case management but not visually emphasized in tree navigation
+
+**Summary (March 8, 2026):**
+- Updated backend `/employee/tree` case scoping into metrics scope vs. tree-visibility scope, with CSR tree visibility excluding resolved cases only.
+- Kept aggregate and employee metrics computed from all in-scope assigned cases, preventing historical metric regressions.
+- Refactored unified tree model to remove separate customer nodes and emit direct combined customer/case case nodes in the active canvas flow.
+- Replaced fixed-case-ring placement with collision-aware relaxed layout and animated transitions so expansion events push nearby nodes apart while preserving hierarchy shape.
+- Simplified tree visuals by removing in-node employee metric strings and hiding priority-specific visuals from the tree and legend.
+- Updated details panel to a combined customer/case view including customer name, user ID, linked employee, created/updated dates, description, contact info entries, and raw JSON.
+- Removed outer "Skill Tree Graph" heading, retaining a single "Tree View" label and introducing a collapsed legend toggle with reduced key density.
+- Extended `backend/scripts/session10E2eSmokeTest.ts` to assert CSR resolved-case hiding and manager resolved-case visibility.
+- Validation completed locally:
+  - backend `npm run lint`
+  - backend `npm run build`
+  - frontend `npm run lint`
+  - frontend `npm run build`
+  - backend `npm run test:session10`
