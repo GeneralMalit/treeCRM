@@ -1,9 +1,16 @@
 type JsonRecord = Record<string, unknown>;
 
 const apiBaseUrl = process.env.API_BASE_URL ?? "http://127.0.0.1:4000";
-const adminEmail = process.env.TREECRM_ADMIN_EMAIL ?? "session2.admin@example.com";
-const adminPassword = process.env.TREECRM_ADMIN_PASSWORD ?? "TreeCRM123!";
 const runId = Date.now();
+
+function requireEnv(name: string): string {
+  const value = process.env[name];
+  if (!value || !value.trim()) {
+    throw new Error(`${name} is required for the Session 3 CRUD smoke test.`);
+  }
+
+  return value;
+}
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(`${apiBaseUrl}${path}`, {
@@ -30,6 +37,10 @@ function assert(condition: unknown, message: string): asserts condition {
 }
 
 async function main() {
+  const adminEmail = requireEnv("TREECRM_ADMIN_EMAIL");
+  const adminPassword = requireEnv("TREECRM_ADMIN_PASSWORD");
+  const createdUserPassword = process.env.TREECRM_CREATED_USER_PASSWORD?.trim() || `Session3User-${runId}!`;
+
   const login = await request<{ token: string; user: { id: string } }>("/auth/login", {
     method: "POST",
     body: JSON.stringify({
@@ -50,7 +61,7 @@ async function main() {
     headers: authHeaders,
     body: JSON.stringify({
       email: createdUserEmail,
-      password: "TreeCRM123!",
+      password: createdUserPassword,
       name: "Session 3 Test User",
       role: "Customer",
     }),

@@ -1,7 +1,12 @@
 import express from "express";
 import { hasJwtSecret, hasSupabaseConfig } from "../config/env";
-import { isRole } from "../constants/roles";
-import { issueToken, normalizeUserRole, parseEmailPassword } from "../domain/authLogic";
+import { DEFAULT_ROLE } from "../constants/roles";
+import {
+  isVerifiedAuthUser,
+  issueToken,
+  normalizeUserRole,
+  parseEmailPassword,
+} from "../domain/authLogic";
 import { requireAuth } from "../middleware/requireAuth";
 import { supabase } from "../services/supabaseClient";
 
@@ -9,7 +14,6 @@ type RegisterBody = {
   email?: unknown;
   password?: unknown;
   name?: unknown;
-  role?: unknown;
 };
 
 type LoginBody = {
@@ -36,7 +40,7 @@ router.post("/register", async (req, res) => {
     return;
   }
 
-  const { email, password, role, name } = req.body as RegisterBody;
+  const { email, password, name } = req.body as RegisterBody;
   const parsedCredentials = parseEmailPassword(email, password);
 
   if ("error" in parsedCredentials) {
@@ -44,15 +48,7 @@ router.post("/register", async (req, res) => {
     return;
   }
 
-  if (typeof role !== "undefined" && !isRole(role)) {
-    res.status(400).json({
-      status: "error",
-      message: "Role must be one of: CSR, Manager, Executive, Admin, Customer.",
-    });
-    return;
-  }
-
-  const normalizedRole = normalizeUserRole(role);
+  const normalizedRole = DEFAULT_ROLE;
   const normalizedName = typeof name === "string" && name.trim() ? name.trim() : null;
 
   const { data, error } = await supabase.auth.signUp({
@@ -82,30 +78,32 @@ router.post("/register", async (req, res) => {
     return;
   }
 
-  const registeredRole = normalizeUserRole(data.user.user_metadata?.role, normalizedRole);
   const registeredName =
     typeof data.user.user_metadata?.name === "string"
       ? data.user.user_metadata.name
       : normalizedName ?? undefined;
-
-  const token = issueToken({
-    sub: data.user.id,
-    email: data.user.email,
-    role: registeredRole,
-    name: registeredName,
-  });
+  const emailVerified = isVerifiedAuthUser(data.user);
+  const token = emailVerified
+    ? issueToken({
+        sub: data.user.id,
+        email: data.user.email,
+        role: normalizedRole,
+        emailVerified: true,
+        name: registeredName,
+      })
+    : undefined;
 
   res.status(201).json({
     status: "ok",
     message: "User registered successfully.",
-    token,
+    ...(token ? { token } : {}),
     user: {
       id: data.user.id,
       email: data.user.email,
-      role: registeredRole,
+      role: normalizedRole,
       name: registeredName,
     },
-    emailConfirmationRequired: !data.session,
+    emailConfirmationRequired: !emailVerified,
   });
 });
 
@@ -147,6 +145,15 @@ router.post("/login", async (req, res) => {
     return;
   }
 
+  if (!isVerifiedAuthUser(data.user)) {
+    res.status(403).json({
+      status: "error",
+      message: "Email verification is required before you can log in.",
+      emailConfirmationRequired: true,
+    });
+    return;
+  }
+
   const role = normalizeUserRole(data.user.user_metadata?.role);
   const name =
     typeof data.user.user_metadata?.name === "string" ? data.user.user_metadata.name : undefined;
@@ -155,6 +162,7 @@ router.post("/login", async (req, res) => {
     sub: data.user.id,
     email: data.user.email,
     role,
+    emailVerified: true,
     name,
   });
 

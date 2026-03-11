@@ -99,4 +99,93 @@ describe("employeeChatRoutes", () => {
     });
     expect(emitInternalChatMessage).not.toHaveBeenCalled();
   });
+
+  it("does not insert a case message when the customer profile lookup fails", async () => {
+    const createNotification = vi.fn().mockResolvedValue(null);
+    const emitCaseChatMessage = vi.fn();
+    const emitInternalChatMessage = vi.fn();
+    const insertSpy = vi.fn().mockResolvedValue({
+      data: {
+        id: "msg-1",
+        case_id: "case-1",
+        sender_id: "csr-1",
+        sender_role: "CSR",
+        message_type: "text",
+        message_text: "We are on it",
+        created_at: "2026-03-08T01:00:00.000Z",
+      },
+      error: null,
+    });
+
+    vi.resetModules();
+    vi.doMock("../../src/config/env", () => ({
+      env: { jwtSecret: "test-secret" },
+      hasJwtSecret: true,
+    }));
+    vi.doMock("../../src/services/supabaseClient", () => ({
+      hasSupabaseAdmin: true,
+      supabaseAdmin: {
+        from(table: string) {
+          if (table === "cases") {
+            return createSupabaseAdminMock({
+              cases: {
+                maybeSingle: ok({
+                  id: "case-1",
+                  customer_id: "customer-1",
+                  assigned_to: "csr-1",
+                  title: "Internet issue",
+                }),
+              },
+            }).from(table);
+          }
+
+          if (table === "customers") {
+            return createSupabaseAdminMock({
+              customers: {
+                maybeSingle: {
+                  data: null,
+                  error: { message: "customer lookup failed" },
+                },
+              },
+            }).from(table);
+          }
+
+          if (table === "messages") {
+            return {
+              insert: insertSpy,
+            };
+          }
+
+          return createSupabaseAdminMock({}).from(table);
+        },
+      },
+    }));
+    vi.doMock("../../src/services/notificationService", () => ({
+      createNotification,
+    }));
+    vi.doMock("../../src/services/realtime", () => ({
+      emitCaseChatMessage,
+      emitInternalChatMessage,
+    }));
+
+    const { employeeChatRouter } = await import("../../src/routes/employeeChatRoutes");
+    const app = createRouterApp(employeeChatRouter);
+    const token = signTestJwt({
+      sub: "csr-1",
+      email: "csr@example.com",
+      role: "CSR",
+      name: "CSR One",
+    });
+
+    const response = await request(app)
+      .post("/employee/cases/0f7f0a4f-9b13-4fa6-8d9f-6a3127c6fb47/messages")
+      .set("Authorization", `Bearer ${token}`)
+      .send({ messageText: "We are on it" });
+
+    expect(response.status).toBe(500);
+    expect(insertSpy).not.toHaveBeenCalled();
+    expect(createNotification).not.toHaveBeenCalled();
+    expect(emitCaseChatMessage).not.toHaveBeenCalled();
+    expect(emitInternalChatMessage).not.toHaveBeenCalled();
+  });
 });

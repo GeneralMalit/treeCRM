@@ -5,7 +5,6 @@ import {
   Alert,
   Button,
   Container,
-  MenuItem,
   Paper,
   Stack,
   TextField,
@@ -15,7 +14,6 @@ import {
 } from "@mui/material";
 import { useRouter } from "next/navigation";
 import { getLandingRoute, login, register, setStoredAccessToken } from "@/lib/auth";
-import { ROLES, type Role } from "@/lib/roles";
 
 type Mode = "login" | "register";
 
@@ -25,7 +23,6 @@ export default function LoginPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [name, setName] = useState("");
-  const [role, setRole] = useState<Role>("Customer");
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -38,6 +35,7 @@ export default function LoginPage() {
     setMode(newMode);
     setMessage(null);
     setError(null);
+    setPassword("");
   };
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
@@ -47,18 +45,21 @@ export default function LoginPage() {
     setIsSubmitting(true);
 
     try {
-      const payload =
-        mode === "login"
-          ? await login(email.trim(), password)
-          : await register(email.trim(), password, role, name.trim() || undefined);
-
-      setStoredAccessToken(payload.token);
-
-      if (payload.emailConfirmationRequired) {
-        setMessage("Registration succeeded. Email confirmation may be required by Supabase settings.");
+      if (mode === "login") {
+        const payload = await login(email.trim(), password);
+        setStoredAccessToken(payload.token);
+        router.push(getLandingRoute(payload.user.role));
+        return;
       }
 
-      router.push(getLandingRoute(payload.user.role));
+      const payload = await register(email.trim(), password, name.trim() || undefined);
+      setPassword("");
+      setMode("login");
+      setMessage(
+        payload.emailConfirmationRequired
+          ? "Registration succeeded. Verify your email before logging in."
+          : "Registration succeeded. You can now log in.",
+      );
     } catch (submitError) {
       setError(submitError instanceof Error ? submitError.message : "Authentication failed.");
     } finally {
@@ -72,7 +73,7 @@ export default function LoginPage() {
         <Stack component="form" spacing={2} onSubmit={handleSubmit}>
           <Typography variant="h5">Authentication</Typography>
           <Typography color="text.secondary">
-            Sign in or register, then you will be routed to your role workspace.
+            Sign in to access your workspace, or register a customer account.
           </Typography>
 
           <ToggleButtonGroup value={mode} exclusive color="primary" onChange={handleModeChange}>
@@ -107,22 +108,6 @@ export default function LoginPage() {
             helperText="Minimum 8 characters"
             required
           />
-
-          {mode === "register" && (
-            <TextField
-              select
-              label="Role"
-              value={role}
-              onChange={(event) => setRole(event.target.value as Role)}
-              helperText="For development, registration can set any role."
-            >
-              {ROLES.map((roleValue) => (
-                <MenuItem key={roleValue} value={roleValue}>
-                  {roleValue}
-                </MenuItem>
-              ))}
-            </TextField>
-          )}
 
           {message && <Alert severity="info">{message}</Alert>}
           {error && <Alert severity="error">{error}</Alert>}

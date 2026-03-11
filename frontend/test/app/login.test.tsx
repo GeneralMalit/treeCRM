@@ -51,7 +51,8 @@ describe("LoginPage", () => {
 
     render(<LoginPage />);
     fireEvent.click(screen.getAllByRole("button", { name: "Register" })[0] as HTMLElement);
-    expect(screen.getByLabelText("Role")).toBeInTheDocument();
+    expect(screen.queryByLabelText("Role")).not.toBeInTheDocument();
+    expect(screen.getByLabelText("Name (optional)")).toBeInTheDocument();
 
     fireEvent.change(screen.getAllByRole("textbox", { name: /email/i })[0] as HTMLElement, {
       target: { value: "user@example.com" },

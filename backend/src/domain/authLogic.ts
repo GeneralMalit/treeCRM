@@ -21,7 +21,16 @@ export function normalizeUserRole(rawRole: unknown, fallback: Role = DEFAULT_ROL
   return isRole(rawRole) ? rawRole : fallback;
 }
 
-export function issueToken(payload: Pick<AuthTokenPayload, "sub" | "email" | "role" | "name">): string {
+export function isVerifiedAuthUser(user: {
+  email_confirmed_at?: unknown;
+  confirmed_at?: unknown;
+}): boolean {
+  return typeof user.email_confirmed_at === "string" || typeof user.confirmed_at === "string";
+}
+
+export function issueToken(
+  payload: Pick<AuthTokenPayload, "sub" | "email" | "role" | "name" | "emailVerified">,
+): string {
   if (!hasJwtSecret) {
     throw new Error("JWT_SECRET is required in backend/.env");
   }

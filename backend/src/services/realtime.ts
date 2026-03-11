@@ -8,6 +8,7 @@ type RealtimeUser = {
   sub: string;
   email: string;
   role: Role;
+  emailVerified: true;
   name?: string;
 };
 
@@ -99,7 +100,8 @@ function parseRealtimeUser(rawToken: string): RealtimeUser | null {
     if (
       typeof decoded.sub !== "string" ||
       typeof decoded.email !== "string" ||
-      !isRole(decoded.role)
+      !isRole(decoded.role) ||
+      decoded.emailVerified !== true
     ) {
       return null;
     }
@@ -108,6 +110,7 @@ function parseRealtimeUser(rawToken: string): RealtimeUser | null {
       sub: decoded.sub,
       email: decoded.email,
       role: decoded.role,
+      emailVerified: true,
       name: typeof decoded.name === "string" ? decoded.name : undefined,
     };
   } catch {
@@ -252,7 +255,8 @@ function getSocketUser(socket: Socket): RealtimeUser | null {
   if (
     typeof user.sub !== "string" ||
     typeof user.email !== "string" ||
-    !isRole(user.role)
+    !isRole(user.role) ||
+    user.emailVerified !== true
   ) {
     return null;
   }
@@ -261,6 +265,7 @@ function getSocketUser(socket: Socket): RealtimeUser | null {
     sub: user.sub,
     email: user.email,
     role: user.role,
+    emailVerified: true,
     name: typeof user.name === "string" ? user.name : undefined,
   };
 }

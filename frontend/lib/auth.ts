@@ -10,12 +10,16 @@ type AuthUser = {
   name?: string;
 };
 
-type AuthSuccessResponse = {
+type AuthResponse = {
   status: string;
   message: string;
-  token: string;
+  token?: string;
   user: AuthUser;
   emailConfirmationRequired?: boolean;
+};
+
+type AuthenticatedAuthResponse = AuthResponse & {
+  token: string;
 };
 
 type MeResponse = {
@@ -28,14 +32,13 @@ type MeResponse = {
   };
 };
 
-function isAuthSuccessResponse(value: unknown): value is AuthSuccessResponse {
+function isAuthResponse(value: unknown): value is AuthResponse {
   if (!value || typeof value !== "object") {
     return false;
   }
 
-  const parsed = value as Partial<AuthSuccessResponse>;
+  const parsed = value as Partial<AuthResponse>;
   return (
-    typeof parsed.token === "string" &&
     !!parsed.user &&
     typeof parsed.user.id === "string" &&
     typeof parsed.user.email === "string" &&
@@ -64,7 +67,7 @@ function getErrorMessage(responseBody: unknown, fallback: string): string {
   return fallback;
 }
 
-export async function login(email: string, password: string): Promise<AuthSuccessResponse> {
+export async function login(email: string, password: string): Promise<AuthenticatedAuthResponse> {
   const response = await fetch(`${API_BASE_URL}/auth/login`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -77,26 +80,20 @@ export async function login(email: string, password: string): Promise<AuthSucces
     throw new Error(getErrorMessage(responseBody, "Login failed."));
   }
 
-  if (!isAuthSuccessResponse(responseBody)) {
+  if (!isAuthResponse(responseBody) || typeof responseBody.token !== "string") {
     throw new Error("Unexpected login response format.");
   }
 
-  return responseBody;
+  return responseBody as AuthenticatedAuthResponse;
 }
 
-export async function register(
-  email: string,
-  password: string,
-  role: Role,
-  name?: string,
-): Promise<AuthSuccessResponse> {
+export async function register(email: string, password: string, name?: string): Promise<AuthResponse> {
   const response = await fetch(`${API_BASE_URL}/auth/register`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       email,
       password,
-      role,
       ...(name ? { name } : {}),
     }),
   });
@@ -107,7 +104,7 @@ export async function register(
     throw new Error(getErrorMessage(responseBody, "Registration failed."));
   }
 
-  if (!isAuthSuccessResponse(responseBody)) {
+  if (!isAuthResponse(responseBody)) {
     throw new Error("Unexpected registration response format.");
   }
 

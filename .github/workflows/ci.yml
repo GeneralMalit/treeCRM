@@ -46,6 +46,15 @@ jobs:
       - name: Build repository
         run: npm run build
 
+      - name: Ensure backend dist is not tracked
+        run: |
+          tracked_files="$(git ls-files 'backend/dist/**')"
+          if [ -n "$tracked_files" ]; then
+            echo "Tracked generated files detected under backend/dist:"
+            echo "$tracked_files"
+            exit 1
+          fi
+
       - name: Run deterministic test suite
         run: npm test
 

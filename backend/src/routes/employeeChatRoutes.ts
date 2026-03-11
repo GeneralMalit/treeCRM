@@ -411,36 +411,52 @@ router.post("/employee/cases/:caseId/messages", requireAuth, requireRole("CSR"),
     return;
   }
 
-  const [customerResult, messageInsertResult] = await Promise.all([
-    client.from("customers").select("id,user_id").eq("id", parsedCase.customer_id).maybeSingle(),
-    client
-      .from("messages")
-      .insert({
-        case_id: parsedCase.id,
-        sender_id: viewer.sub,
-        sender_role: "CSR",
-        message_type: "text",
-        message_text: parsedBody.data.messageText,
-      })
-      .select("id,case_id,sender_id,sender_role,message_type,message_text,created_at")
-      .single(),
-  ]);
+  const customerResult = await client
+    .from("customers")
+    .select("id,user_id")
+    .eq("id", parsedCase.customer_id)
+    .maybeSingle();
 
-  if (customerResult.error || messageInsertResult.error) {
+  if (customerResult.error) {
     res.status(500).json({
       status: "error",
       message:
-        customerResult.error?.message ??
-        messageInsertResult.error?.message ??
-        "Failed to send case message.",
+        customerResult.error.message ?? "Failed to load the customer profile for this case.",
     });
     return;
   }
 
   const customer = customerResult.data ? toCustomerRows([customerResult.data as unknown])[0] : null;
-  const parsedMessage = toCaseMessageRows([messageInsertResult.data as unknown])[0];
+  if (!customer) {
+    res.status(500).json({
+      status: "error",
+      message: "Customer profile for this case was not found.",
+    });
+    return;
+  }
 
-  if (!customer || !parsedMessage) {
+  const messageInsertResult = await client
+    .from("messages")
+    .insert({
+      case_id: parsedCase.id,
+      sender_id: viewer.sub,
+      sender_role: "CSR",
+      message_type: "text",
+      message_text: parsedBody.data.messageText,
+    })
+    .select("id,case_id,sender_id,sender_role,message_type,message_text,created_at")
+    .single();
+
+  if (messageInsertResult.error) {
+    res.status(500).json({
+      status: "error",
+      message: messageInsertResult.error.message,
+    });
+    return;
+  }
+
+  const parsedMessage = toCaseMessageRows([messageInsertResult.data as unknown])[0];
+  if (!parsedMessage) {
     res.status(500).json({
       status: "error",
       message: "Failed to parse created case message payload.",

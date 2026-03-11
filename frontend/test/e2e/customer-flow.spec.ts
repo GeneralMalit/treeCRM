@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import { APP_FOOTER_TEXT } from "../../lib/appMeta";
 
 const API_BASE_URL = "http://127.0.0.1:4000";
 
@@ -175,7 +176,7 @@ test("customer login redirect, portal flow, and footer visibility", async ({ pag
   });
 
   await page.goto("/");
-  await expect(page.getByText("(c) 2026 treeCRM by General Malit - v1.0.0")).toBeVisible();
+  await expect(page.getByText(APP_FOOTER_TEXT)).toBeVisible();
 
   await page.goto("/login");
   await page.getByRole("textbox", { name: /email/i }).fill("customer@example.com");
@@ -193,5 +194,5 @@ test("customer login redirect, portal flow, and footer visibility", async ({ pag
   await expect(page).toHaveURL(/\/portal\/ticket-created$/);
   await expect(page.getByRole("heading", { name: "Ticket Detail" })).toBeVisible();
   await expect(page.getByRole("link", { name: "Back to Tickets" })).toBeVisible();
-  await expect(page.getByText("(c) 2026 treeCRM by General Malit - v1.0.0")).toBeVisible();
+  await expect(page.getByText(APP_FOOTER_TEXT)).toBeVisible();
 });

@@ -5,6 +5,7 @@ import {
   getStoredAccessToken,
   login,
   me,
+  register,
   setStoredAccessToken,
 } from "@/lib/auth";
 
@@ -53,5 +54,27 @@ describe("auth client", () => {
     clearStoredAccessToken();
     expect(getStoredAccessToken()).toBeNull();
     expect(getLandingRoute("Admin")).toBe("/admin");
+  });
+
+  it("accepts register responses without an app token", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => ({
+          status: "ok",
+          message: "User registered successfully.",
+          emailConfirmationRequired: true,
+          user: { id: "user-1", email: "user@example.com", role: "Customer" },
+        }),
+      }),
+    );
+
+    await expect(register("user@example.com", "password123", "User")).resolves.toMatchObject({
+      emailConfirmationRequired: true,
+      user: {
+        role: "Customer",
+      },
+    });
   });
 });

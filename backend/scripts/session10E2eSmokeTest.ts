@@ -66,6 +66,15 @@ function assert(condition: unknown, message: string): asserts condition {
   }
 }
 
+function requireEnv(name: string): string {
+  const value = process.env[name];
+  if (!value || !value.trim()) {
+    throw new Error(`${name} is required for the Session 10 smoke test.`);
+  }
+
+  return value;
+}
+
 async function run() {
   const server = createServer(app);
   await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
@@ -77,11 +86,11 @@ async function run() {
   const baseUrl = `http://127.0.0.1:${address.port}`;
   const seed = `${Date.now()}${Math.floor(Math.random() * 10000)}`;
 
-  const sharedPassword = process.env.TREECRM_TEST_PASSWORD ?? "TreeCRM123!";
-  const adminEmail = process.env.TREECRM_ADMIN_EMAIL ?? "session2.admin@example.com";
-  const managerEmail = process.env.TREECRM_MANAGER_EMAIL ?? "session2.manager@example.com";
-  const csrAEmail = process.env.TREECRM_CSR_EMAIL ?? "session2.csr@example.com";
-  const customerEmail = process.env.TREECRM_CUSTOMER_EMAIL ?? "session2.customer@example.com";
+  const sharedPassword = requireEnv("TREECRM_TEST_PASSWORD");
+  const adminEmail = requireEnv("TREECRM_ADMIN_EMAIL");
+  const managerEmail = requireEnv("TREECRM_MANAGER_EMAIL");
+  const csrAEmail = requireEnv("TREECRM_CSR_EMAIL");
+  const customerEmail = requireEnv("TREECRM_CUSTOMER_EMAIL");
 
   const csrBEmail = `s10csrb${seed}@gmail.com`;
   const csrBPassword = "Session10CsrB123!";

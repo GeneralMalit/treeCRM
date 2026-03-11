@@ -5,5 +5,6 @@ export interface AuthTokenPayload extends JwtPayload {
   sub: string;
   email: string;
   role: Role;
+  emailVerified: boolean;
   name?: string;
 }

@@ -580,9 +580,17 @@ router.post("/portal/tickets", async (req, res) => {
 
   const messageInsertResult = await client.from("messages").insert(messageInserts);
   if (messageInsertResult.error) {
+    const rollbackResult = await client
+      .from("cases")
+      .delete()
+      .eq("id", parsedCase.id)
+      .eq("customer_id", customerResult.data.id);
+
     res.status(500).json({
       status: "error",
-      message: messageInsertResult.error.message,
+      message: rollbackResult.error
+        ? `${messageInsertResult.error.message} Ticket rollback failed and requires manual cleanup.`
+        : messageInsertResult.error.message,
     });
     return;
   }

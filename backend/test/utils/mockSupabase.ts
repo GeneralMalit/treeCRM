@@ -8,6 +8,7 @@ type TablePlan = {
   maybeSingle?: QueryResult;
   single?: QueryResult;
   update?: QueryResult;
+  delete?: QueryResult;
 };
 
 type SupabasePlan = Record<string, TablePlan>;
@@ -20,7 +21,7 @@ function missingResult(): QueryResult<null> {
   return ok(null);
 }
 
-function createBuilder(tablePlan: TablePlan, action: "select" | "insert" | "update" = "select") {
+function createBuilder(tablePlan: TablePlan, action: "select" | "insert" | "update" | "delete" = "select") {
   const builder = {
     select() {
       return createBuilder(tablePlan, action);
@@ -30,6 +31,9 @@ function createBuilder(tablePlan: TablePlan, action: "select" | "insert" | "upda
     },
     update() {
       return createBuilder(tablePlan, "update");
+    },
+    delete() {
+      return createBuilder(tablePlan, "delete");
     },
     eq() {
       return createBuilder(tablePlan, action);
@@ -50,6 +54,8 @@ function createBuilder(tablePlan: TablePlan, action: "select" | "insert" | "upda
       const result =
         action === "update"
           ? tablePlan.update ?? ok([])
+          : action === "delete"
+            ? tablePlan.delete ?? ok([])
           : tablePlan.list ?? ok([]);
       return Promise.resolve(result).then(onFulfilled, onRejected);
     },

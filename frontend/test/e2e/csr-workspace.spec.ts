@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import { APP_FOOTER_TEXT } from "../../lib/appMeta";
 
 const API_BASE_URL = "http://127.0.0.1:4000";
 
@@ -178,5 +179,5 @@ test("csr workspace loads tree data and case details", async ({ page }) => {
   await expect(page.getByText("CSR Tree Workspace")).toBeVisible();
   await expect(page.getByText("Customer Name: Acme Corp")).toBeVisible();
   await expect(page.getByText("Case Reference: Internet issue")).toBeVisible();
-  await expect(page.getByText("(c) 2026 treeCRM by General Malit - v1.0.0")).toBeVisible();
+  await expect(page.getByText(APP_FOOTER_TEXT)).toBeVisible();
 });

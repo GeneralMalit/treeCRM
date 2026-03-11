@@ -5,7 +5,12 @@ import { createSupabaseAuthMock, ok } from "../utils/mockSupabase";
 import { createRouterApp } from "../utils/routerApp";
 import { signTestJwt } from "../utils/testJwt";
 
-async function loadAuthRouter() {
+type AuthRouterOptions = {
+  signUp?: ReturnType<typeof ok>;
+  signInWithPassword?: ReturnType<typeof ok>;
+};
+
+async function loadAuthRouter(options?: AuthRouterOptions) {
   vi.resetModules();
   vi.doMock("../../src/config/env", () => ({
     env: {
@@ -16,20 +21,28 @@ async function loadAuthRouter() {
   }));
   vi.doMock("../../src/services/supabaseClient", () => ({
     supabase: createSupabaseAuthMock({
-      signUp: ok({
-        user: {
-          id: "user-1",
-          email: "user@example.com",
-          user_metadata: { role: "Customer", name: "User" },
-        },
-      }),
-      signInWithPassword: ok({
-        user: {
-          id: "user-1",
-          email: "user@example.com",
-          user_metadata: { role: "Customer", name: "User" },
-        },
-      }),
+      signUp:
+        options?.signUp ??
+        ok({
+          user: {
+            id: "user-1",
+            email: "user@example.com",
+            user_metadata: { role: "Customer", name: "User" },
+            email_confirmed_at: "2026-03-08T00:00:00.000Z",
+          },
+          session: { access_token: "supabase-session-token" },
+        }),
+      signInWithPassword:
+        options?.signInWithPassword ??
+        ok({
+          user: {
+            id: "user-1",
+            email: "user@example.com",
+            user_metadata: { role: "Customer", name: "User" },
+            email_confirmed_at: "2026-03-08T00:00:00.000Z",
+          },
+          session: { access_token: "supabase-session-token" },
+        }),
     }),
   }));
 
@@ -62,9 +75,10 @@ describe("auth and protected routes", () => {
 
     const registerResponse = await request(app)
       .post("/register")
-      .send({ email: "user@example.com", password: "password123", role: "Customer", name: "User" });
+      .send({ email: "user@example.com", password: "password123", role: "Admin", name: "User" });
     expect(registerResponse.status).toBe(201);
     expect(registerResponse.body.user.role).toBe("Customer");
+    expect(registerResponse.body.token).toEqual(expect.any(String));
 
     const loginResponse = await request(app)
       .post("/login")
@@ -85,6 +99,46 @@ describe("auth and protected routes", () => {
       .post("/logout")
       .set("Authorization", `Bearer ${loginResponse.body.token}`);
     expect(logoutResponse.status).toBe(200);
+  });
+
+  it("does not issue an app token until the user email is verified", async () => {
+    const app = await loadAuthRouter({
+      signUp: ok({
+        user: {
+          id: "user-2",
+          email: "pending@example.com",
+          user_metadata: { role: "Customer", name: "Pending User" },
+          email_confirmed_at: null,
+        },
+        session: null,
+      }),
+      signInWithPassword: ok({
+        user: {
+          id: "user-2",
+          email: "pending@example.com",
+          user_metadata: { role: "Customer", name: "Pending User" },
+          email_confirmed_at: null,
+        },
+        session: null,
+      }),
+    });
+
+    const registerResponse = await request(app)
+      .post("/register")
+      .send({ email: "pending@example.com", password: "password123", role: "Admin", name: "Pending User" });
+
+    expect(registerResponse.status).toBe(201);
+    expect(registerResponse.body.user.role).toBe("Customer");
+    expect(registerResponse.body.token).toBeUndefined();
+    expect(registerResponse.body.emailConfirmationRequired).toBe(true);
+
+    const loginResponse = await request(app)
+      .post("/login")
+      .send({ email: "pending@example.com", password: "password123" });
+
+    expect(loginResponse.status).toBe(403);
+    expect(loginResponse.body.emailConfirmationRequired).toBe(true);
+    expect(loginResponse.body.token).toBeUndefined();
   });
 
   it("enforces auth and role-based access on protected routes", async () => {

@@ -56,6 +56,15 @@ async function request<T>(
   return { response, body };
 }
 
+function requireEnv(name: string): string {
+  const value = process.env[name];
+  if (!value || !value.trim()) {
+    throw new Error(`${name} is required for the Session 6 portal smoke test.`);
+  }
+
+  return value;
+}
+
 async function run() {
   const server = createServer(app);
   await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
@@ -66,49 +75,69 @@ async function run() {
 
   const baseUrl = `http://127.0.0.1:${address.port}`;
   const seed = `${Date.now()}-${Math.floor(Math.random() * 10000)}`;
-  const password = "PortalSmoke123!";
-
-  const adminEmail = `s6admin${seed}@treecrm.dev`;
+  const adminEmail = requireEnv("TREECRM_ADMIN_EMAIL");
+  const adminPassword = requireEnv("TREECRM_ADMIN_PASSWORD");
+  const password = process.env.TREECRM_PORTAL_SMOKE_PASSWORD?.trim() || `Session6Portal-${seed}!`;
   const csrEmail = `s6csr${seed}@treecrm.dev`;
   const customerEmail = `s6customer${seed}@treecrm.dev`;
 
   console.log("Session 6 smoke test started.");
   console.log(`Base URL: ${baseUrl}`);
-  console.log(`Admin: ${adminEmail}`);
+  console.log(`Admin login: ${adminEmail}`);
   console.log(`CSR: ${csrEmail}`);
   console.log(`Customer: ${customerEmail}`);
 
   try {
-    const adminRegister = await request(baseUrl, "/auth/register", {
+    const adminLogin = await request(baseUrl, "/auth/login", {
       method: "POST",
-      body: { email: adminEmail, password, role: "Admin", name: "Session6 Admin" },
+      body: { email: adminEmail, password: adminPassword },
     });
-    ensureOk(adminRegister.response, adminRegister.body, "Failed to register admin test user.");
-    if (!adminRegister.body.token || !adminRegister.body.user?.id) {
-      throw new Error("Admin registration did not return token/user.");
+    ensureOk(adminLogin.response, adminLogin.body, "Failed to login admin test user.");
+    if (!adminLogin.body.token || !adminLogin.body.user?.id) {
+      throw new Error("Admin login did not return token/user.");
     }
-    const adminToken = adminRegister.body.token;
+    const adminToken = adminLogin.body.token;
 
-    const csrRegister = await request(baseUrl, "/auth/register", {
+    const csrCreate = await request<{ id: string }>(baseUrl, "/data/users", {
       method: "POST",
+      token: adminToken,
       body: { email: csrEmail, password, role: "CSR", name: "Session6 CSR" },
     });
-    ensureOk(csrRegister.response, csrRegister.body, "Failed to register CSR test user.");
-    if (!csrRegister.body.token || !csrRegister.body.user?.id) {
-      throw new Error("CSR registration did not return token/user.");
+    ensureOk(csrCreate.response, csrCreate.body, "Failed to create CSR test user.");
+    if (!csrCreate.body.data?.id) {
+      throw new Error("CSR creation did not return a user ID.");
     }
-    const csrToken = csrRegister.body.token;
-    const csrUserId = csrRegister.body.user.id;
+    const csrUserId = csrCreate.body.data.id;
 
-    const customerRegister = await request(baseUrl, "/auth/register", {
+    const customerCreate = await request<{ id: string }>(baseUrl, "/data/users", {
       method: "POST",
+      token: adminToken,
       body: { email: customerEmail, password, role: "Customer", name: "Session6 Customer" },
     });
-    ensureOk(customerRegister.response, customerRegister.body, "Failed to register customer test user.");
-    if (!customerRegister.body.token || !customerRegister.body.user?.id) {
-      throw new Error("Customer registration did not return token/user.");
+    ensureOk(customerCreate.response, customerCreate.body, "Failed to create customer test user.");
+    if (!customerCreate.body.data?.id) {
+      throw new Error("Customer creation did not return a user ID.");
     }
-    const customerToken = customerRegister.body.token;
+
+    const csrLogin = await request(baseUrl, "/auth/login", {
+      method: "POST",
+      body: { email: csrEmail, password },
+    });
+    ensureOk(csrLogin.response, csrLogin.body, "Failed to login CSR test user.");
+    if (!csrLogin.body.token) {
+      throw new Error("CSR login did not return a token.");
+    }
+    const csrToken = csrLogin.body.token;
+
+    const customerLogin = await request(baseUrl, "/auth/login", {
+      method: "POST",
+      body: { email: customerEmail, password },
+    });
+    ensureOk(customerLogin.response, customerLogin.body, "Failed to login customer test user.");
+    if (!customerLogin.body.token) {
+      throw new Error("Customer login did not return a token.");
+    }
+    const customerToken = customerLogin.body.token;
 
     const createTicket = await request<{ ticket: { id: string } }>(baseUrl, "/portal/tickets", {
       method: "POST",

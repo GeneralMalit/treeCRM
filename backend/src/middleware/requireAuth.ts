@@ -45,8 +45,14 @@ export function requireAuth(req: Request, res: Response, next: NextFunction): vo
     const email = decoded.email;
     const role = decoded.role;
     const name = decoded.name;
+    const emailVerified = decoded.emailVerified;
 
-    if (typeof sub !== "string" || typeof email !== "string" || !isRole(role)) {
+    if (
+      typeof sub !== "string" ||
+      typeof email !== "string" ||
+      !isRole(role) ||
+      emailVerified !== true
+    ) {
       throw new Error("Invalid token claims");
     }
 
@@ -55,6 +61,7 @@ export function requireAuth(req: Request, res: Response, next: NextFunction): vo
       sub,
       email,
       role,
+      emailVerified: true,
       name: typeof name === "string" ? name : undefined,
     };
 
