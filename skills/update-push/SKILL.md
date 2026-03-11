@@ -84,7 +84,31 @@ Check for:
 
 If the repo has a version-sync script or README version text, verify they still match the final version decision.
 
-## Step 5: Stage all changes
+## Step 5: Run backend coverage validation
+
+Run the backend coverage gate before staging anything:
+
+```powershell
+npm --prefix backend run test:coverage
+```
+
+Treat this as a hard gate for Step 6. If it fails, stop and report the failure instead of staging, committing, or pushing.
+
+Record `npm --prefix backend run test:coverage` in `Sessions.md` only if it was actually run.
+
+## Step 6: Run the full test suite
+
+Run the repository's canonical full test suite from the repo root:
+
+```powershell
+npm test
+```
+
+Treat this as a hard gate for Step 7. If the suite fails, stop and report the failure instead of staging, committing, or pushing.
+
+Record `npm test` in `Sessions.md` only if it was actually run.
+
+## Step 7: Stage all changes
 
 Run these commands in order:
 
@@ -96,7 +120,7 @@ git status --short
 
 Do not stage selectively unless the user explicitly requests a partial commit.
 
-## Step 6: Commit with a fixed message shape
+## Step 8: Commit with a fixed message shape
 
 Commit with exactly three sentences:
 
@@ -112,19 +136,7 @@ Template:
 <Delivered functionality>. <Why the codebase or product moved forward>. <How docs/versioning/validation/repo state were aligned>.
 ```
 
-## Step 7: Run the full test suite
-
-Run the repository's canonical full test suite from the repo root before pushing:
-
-```powershell
-npm test
-```
-
-Treat this as a hard gate for Step 8. If the suite fails, stop and report the failure instead of pushing.
-
-Record `npm test` in `Sessions.md` only if it was actually run.
-
-## Step 8: Push the current branch
+## Step 9: Push the current branch
 
 Detect the current branch with:
 
@@ -147,4 +159,5 @@ If `origin` does not exist, stop and report that clearly instead of guessing ano
 - Do not bump versions based on mood or aesthetics.
 - Do not vary the commit-message structure from the three-sentence format.
 - Do not omit blockers, follow-up work, or remaining manual verification when they still exist.
-- Do not push if the required full test suite was not run successfully.
+- Do not stage, commit, or push if `npm --prefix backend run test:coverage` did not run successfully.
+- Do not stage, commit, or push if the required full test suite did not run successfully.

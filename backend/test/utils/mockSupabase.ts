@@ -38,17 +38,38 @@ function createBuilder(tablePlan: TablePlan, action: "select" | "insert" | "upda
     eq() {
       return createBuilder(tablePlan, action);
     },
+    neq() {
+      return createBuilder(tablePlan, action);
+    },
     in() {
+      return createBuilder(tablePlan, action);
+    },
+    is() {
+      return createBuilder(tablePlan, action);
+    },
+    or() {
       return createBuilder(tablePlan, action);
     },
     order() {
       return createBuilder(tablePlan, action);
     },
     maybeSingle() {
-      return Promise.resolve(tablePlan.maybeSingle ?? missingResult());
+      const result =
+        action === "update"
+          ? tablePlan.update ?? missingResult()
+          : action === "delete"
+            ? tablePlan.delete ?? missingResult()
+            : tablePlan.maybeSingle ?? missingResult();
+      return Promise.resolve(result);
     },
     single() {
-      return Promise.resolve(tablePlan.single ?? missingResult());
+      const result =
+        action === "update"
+          ? tablePlan.update ?? missingResult()
+          : action === "delete"
+            ? tablePlan.delete ?? missingResult()
+            : tablePlan.single ?? missingResult();
+      return Promise.resolve(result);
     },
     then(onFulfilled: (value: QueryResult) => unknown, onRejected?: (reason: unknown) => unknown) {
       const result =
