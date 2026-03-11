@@ -1,5 +1,6 @@
 import request from "supertest";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import packageJson from "../../package.json";
 import { createRouterApp } from "../utils/routerApp";
 
 async function loadSystemRouter(options?: {
@@ -40,7 +41,7 @@ describe("systemRoutes", () => {
     expect(versionResponse.status).toBe(200);
     expect(versionResponse.body).toMatchObject({
       name: "backend",
-      version: "1.0.0",
+      version: packageJson.version,
     });
   });
 

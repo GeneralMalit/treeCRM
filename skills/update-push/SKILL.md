@@ -112,7 +112,19 @@ Template:
 <Delivered functionality>. <Why the codebase or product moved forward>. <How docs/versioning/validation/repo state were aligned>.
 ```
 
-## Step 7: Push the current branch
+## Step 7: Run the full test suite
+
+Run the repository's canonical full test suite from the repo root before pushing:
+
+```powershell
+npm test
+```
+
+Treat this as a hard gate for Step 8. If the suite fails, stop and report the failure instead of pushing.
+
+Record `npm test` in `Sessions.md` only if it was actually run.
+
+## Step 8: Push the current branch
 
 Detect the current branch with:
 
@@ -135,3 +147,4 @@ If `origin` does not exist, stop and report that clearly instead of guessing ano
 - Do not bump versions based on mood or aesthetics.
 - Do not vary the commit-message structure from the three-sentence format.
 - Do not omit blockers, follow-up work, or remaining manual verification when they still exist.
+- Do not push if the required full test suite was not run successfully.
