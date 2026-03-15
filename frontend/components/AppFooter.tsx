@@ -15,7 +15,7 @@ export function AppFooter() {
         <Typography
           variant="body2"
           color="text.secondary"
-          sx={{ textAlign: "center", fontFamily: "var(--font-geist-mono)" }}
+          sx={{ textAlign: "center", fontFamily: "var(--font-geist-sans)" }}
         >
           {APP_FOOTER_TEXT}
         </Typography>

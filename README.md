@@ -1,6 +1,6 @@
 # treeCRM
 
-[![treeCRM](https://img.shields.io/badge/treeCRM-v2.0.0-166534?style=for-the-badge)](#semantic-versioning)
+[![treeCRM](https://img.shields.io/badge/treeCRM-v0.9.0-166534?style=for-the-badge)](#semantic-versioning)
 [![Next.js](https://img.shields.io/badge/Next.js-16.1.6-000000?style=for-the-badge)](https://nextjs.org/docs)
 [![React](https://img.shields.io/badge/React-19.2.3-149ECA?style=for-the-badge)](https://react.dev/)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5-3178C6?style=for-the-badge)](https://www.typescriptlang.org/docs/)
@@ -135,6 +135,11 @@ npm run test:e2e
 - Database and auth: Supabase
 
 The session history documents the production rollout path and the live verification steps already completed.
+
+## Production Readiness Gaps (Tracked)
+
+- Add admin-facing workspace account provisioning (create employee workspace accounts from admin surface).
+- Add admin bootstrap/management flow for creating additional admin users without manual backend intervention.
 
 ## Semantic Versioning
 

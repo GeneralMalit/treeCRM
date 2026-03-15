@@ -3,10 +3,14 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import LoginPage from "@/app/login/page";
 
 const push = vi.fn();
+const searchParamsGet = vi.fn(() => null);
 
 vi.mock("next/navigation", () => ({
   useRouter: () => ({
     push,
+  }),
+  useSearchParams: () => ({
+    get: searchParamsGet,
   }),
 }));
 
@@ -20,6 +24,8 @@ vi.mock("@/lib/auth", () => ({
 afterEach(() => {
   cleanup();
   push.mockReset();
+  searchParamsGet.mockReset();
+  searchParamsGet.mockReturnValue(null);
 });
 
 describe("LoginPage", () => {
