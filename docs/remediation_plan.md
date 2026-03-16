@@ -84,7 +84,7 @@ Definition of done:
 - [x] DROPPED (PoC scope): Add integration tests for failure injection and retries (valuable but not required for PoC milestone)
 
 Definition of done:
-- [ ] No partially initialized/orphaned tickets
+- [x] No partially initialized/orphaned tickets
 - [x] DROPPED (PoC scope): Exhaustive retry/failure-injection coverage
 
 ### P1-3 Strengthen regression guardrails
@@ -153,12 +153,12 @@ Definition of done:
 - [x] Registration cannot assign privileged roles
 - [ ] PoC service credentials rotated and plaintext secrets removed from tracked files
 - [x] Unverified users cannot access protected routes
-- [ ] Core chat/ticket flows are atomic in normal operation paths
+- [x] Core chat/ticket flows are atomic in normal operation paths
 - [x] Coverage thresholds enforced in CI
 - [x] DROPPED (PoC scope): Shared constants/utils centralized
 - [x] Generated artifacts removed from VCS
 
 ## Milestones
 - [ ] Milestone A (Day 1-3): remaining PoC-scope P0 items completed
-- [ ] Milestone B (Week 1-2): remaining PoC-scope P1 items completed
+- [x] Milestone B (Week 1-2): remaining PoC-scope P1 items completed
 - [x] DROPPED (PoC scope): Milestone C (Week 3-6) P2 refactors
