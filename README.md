@@ -1,6 +1,6 @@
 # treeCRM
 
-[![treeCRM](https://img.shields.io/badge/treeCRM-v1.0.0-166534?style=for-the-badge)](#semantic-versioning)
+[![treeCRM](https://img.shields.io/badge/treeCRM-v1.0.1-166534?style=for-the-badge)](#semantic-versioning)
 [![Next.js](https://img.shields.io/badge/Next.js-16.1.6-000000?style=for-the-badge)](https://nextjs.org/docs)
 [![React](https://img.shields.io/badge/React-19.2.3-149ECA?style=for-the-badge)](https://react.dev/)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5-3178C6?style=for-the-badge)](https://www.typescriptlang.org/docs/)
