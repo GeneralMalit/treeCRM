@@ -5,6 +5,8 @@
   "scripts": {
     "version:sync": "node scripts/sync-version.mjs",
     "postversion": "npm run version:sync",
+    "release": "semantic-release",
+    "release:dry": "semantic-release --dry-run",
     "lint": "npm --prefix backend run lint && npm --prefix frontend run lint",
     "build": "npm --prefix backend run build && npm --prefix frontend run build",
     "test:backend": "npm --prefix backend run test",
@@ -12,5 +14,16 @@
     "test:e2e": "npm --prefix frontend run test:e2e",
     "test:live": "npm --prefix backend run test:live",
     "test": "npm run test:backend && npm run test:frontend && npm run test:e2e"
+  },
+  "devDependencies": {
+    "@semantic-release/changelog": "^6.0.3",
+    "@semantic-release/commit-analyzer": "^13.0.1",
+    "@semantic-release/exec": "^7.1.0",
+    "@semantic-release/git": "^10.0.1",
+    "@semantic-release/github": "^12.0.6",
+    "@semantic-release/npm": "^13.1.5",
+    "@semantic-release/release-notes-generator": "^14.1.0",
+    "conventional-changelog-conventionalcommits": "^9.3.0",
+    "semantic-release": "^25.0.3"
   }
 }

@@ -1,0 +1,70 @@
+{
+  "branches": ["main", "master"],
+  "tagFormat": "treeCRM-v${version}",
+  "plugins": [
+    [
+      "@semantic-release/commit-analyzer",
+      {
+        "preset": "conventionalcommits",
+        "parserOpts": {
+          "headerPattern": "^(.*)$",
+          "headerCorrespondence": ["subject"]
+        },
+        "releaseRules": [
+          {
+            "subject": "*BREAKING*",
+            "release": "major"
+          },
+          {
+            "subject": "feat*",
+            "release": "minor"
+          },
+          {
+            "subject": "*",
+            "release": "patch"
+          }
+        ]
+      }
+    ],
+    [
+      "@semantic-release/release-notes-generator",
+      {
+        "preset": "conventionalcommits",
+        "parserOpts": {
+          "headerPattern": "^(.*)$",
+          "headerCorrespondence": ["subject"]
+        }
+      }
+    ],
+    "@semantic-release/changelog",
+    [
+      "@semantic-release/npm",
+      {
+        "npmPublish": false
+      }
+    ],
+    [
+      "@semantic-release/exec",
+      {
+        "prepareCmd": "npm run version:sync"
+      }
+    ],
+    [
+      "@semantic-release/git",
+      {
+        "assets": [
+          "package.json",
+          "package-lock.json",
+          "backend/package.json",
+          "backend/package-lock.json",
+          "frontend/package.json",
+          "frontend/package-lock.json",
+          "README.md",
+          "CHANGELOG.md"
+        ],
+        "message": "chore(release): ${nextRelease.version} [skip ci]\n\n${nextRelease.notes}"
+      }
+    ],
+    "@semantic-release/github"
+  ]
+}

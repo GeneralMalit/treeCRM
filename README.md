@@ -145,16 +145,19 @@ The session history documents the production rollout path and the live verificat
 
 The application uses one public version for the whole repo.
 
-- Update the version at the repo root only.
-- Preferred command: `npm version patch`, `npm version minor`, or `npm version major` from the repo root.
-- The root `postversion` hook runs `npm run version:sync`.
-- `version:sync` updates `backend/package.json`, `frontend/package.json`, both package-lock top-level version fields, and the version text in this README.
+- Releases are automated by `semantic-release` on pushes to `main`/`master`.
+- Root `package.json` remains the canonical version source for the entire repo.
+- On each release, the workflow:
+  - calculates the next version from commit history (default fallback is `patch`)
+  - updates root version metadata
+  - runs `npm run version:sync` to update backend/frontend package metadata and README version text
+  - commits release assets and tags the release as `treeCRM-v<version>`
+- Local dry run command: `npm run release:dry`
 
-If you insist on editing manually, edit the root `package.json` `version` field and then run:
-
-```bash
-npm run version:sync
-```
+Commit-message guidance for predictable bumps:
+- `feat ...` in the subject -> minor bump
+- subject containing `BREAKING` -> major bump
+- all other commit subjects -> patch bump
 
 ## Additional Docs
 
