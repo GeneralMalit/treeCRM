@@ -193,6 +193,24 @@ function ensureSupabase() {
   return supabaseAdmin;
 }
 
+function isMissingRpcFunctionError(message: string | undefined): boolean {
+  if (!message) {
+    return false;
+  }
+
+  const normalized = message.toLowerCase();
+  return normalized.includes("could not find the function") || normalized.includes("function") && normalized.includes("does not exist");
+}
+
+function extractRpcRecord(data: unknown): Record<string, unknown> | null {
+  if (Array.isArray(data)) {
+    const [first] = data;
+    return isRecord(first) ? first : null;
+  }
+
+  return isRecord(data) ? data : null;
+}
+
 async function ensureCustomerProfile(viewer: {
   sub: string;
   email: string;
@@ -517,6 +535,49 @@ router.post("/portal/tickets", async (req, res) => {
   }
 
   const systemSettings = await getSystemSettings();
+  const systemMessageText = `Ticket created in category "${parsedBody.data.category}" and assigned to support.`;
+
+  if (typeof client.rpc === "function") {
+    const rpcCreateResult = await client.rpc("create_ticket_with_bootstrap_messages", {
+      p_customer_id: customerResult.data.id,
+      p_assigned_to: assigneeResult.data.id,
+      p_title: parsedBody.data.subject,
+      p_description: parsedBody.data.description,
+      p_category: parsedBody.data.category,
+      p_attachments: parsedBody.data.attachments,
+      p_priority: systemSettings.defaultCasePriority,
+      p_customer_user_id: viewer.sub,
+      p_system_message_text: systemMessageText,
+    });
+
+    if (!rpcCreateResult.error) {
+      const rpcCaseRecord = extractRpcRecord(rpcCreateResult.data);
+      const parsedRpcCase = rpcCaseRecord ? toCaseRows([rpcCaseRecord])[0] : null;
+      if (!parsedRpcCase) {
+        res.status(500).json({
+          status: "error",
+          message: "Failed to parse created ticket payload.",
+        });
+        return;
+      }
+
+      res.status(201).json({
+        status: "ok",
+        data: {
+          ticket: mapTicketSummary(parsedRpcCase, assigneeResult.data),
+        },
+      });
+      return;
+    }
+
+    if (!isMissingRpcFunctionError(rpcCreateResult.error.message)) {
+      res.status(500).json({
+        status: "error",
+        message: rpcCreateResult.error.message,
+      });
+      return;
+    }
+  }
 
   const caseInsertResult = await client
     .from("cases")
@@ -564,7 +625,7 @@ router.post("/portal/tickets", async (req, res) => {
       sender_id: null,
       sender_role: "Customer",
       message_type: "system",
-      message_text: `Ticket created in category "${parsedBody.data.category}" and assigned to support.`,
+      message_text: systemMessageText,
     },
   ];
 
@@ -580,15 +641,18 @@ router.post("/portal/tickets", async (req, res) => {
 
   const messageInsertResult = await client.from("messages").insert(messageInserts);
   if (messageInsertResult.error) {
+    const messageCleanupResult = await client.from("messages").delete().eq("case_id", parsedCase.id);
+
     const rollbackResult = await client
       .from("cases")
       .delete()
       .eq("id", parsedCase.id)
       .eq("customer_id", customerResult.data.id);
 
+    const requiresManualCleanup = Boolean(messageCleanupResult.error || rollbackResult.error);
     res.status(500).json({
       status: "error",
-      message: rollbackResult.error
+      message: requiresManualCleanup
         ? `${messageInsertResult.error.message} Ticket rollback failed and requires manual cleanup.`
         : messageInsertResult.error.message,
     });
@@ -941,33 +1005,90 @@ router.post("/portal/tickets/:caseId/messages", async (req, res) => {
     return;
   }
 
-  const messageInsertResult = await client
-    .from("messages")
-    .insert({
-      case_id: caseId.data,
-      sender_id: viewer.sub,
-      sender_role: "Customer",
-      message_type: "text",
-      message_text: parsedBody.data.messageText,
-    })
-    .select("id,case_id,sender_id,sender_role,message_type,message_text,created_at")
-    .single();
+  let parsedMessage: MessageRow | null = null;
 
-  if (messageInsertResult.error) {
-    res.status(400).json({
-      status: "error",
-      message: messageInsertResult.error.message,
+  if (typeof client.rpc === "function") {
+    const rpcMessageResult = await client.rpc("append_customer_case_message_atomic", {
+      p_case_id: caseId.data,
+      p_customer_id: customerResult.data.id,
+      p_sender_id: viewer.sub,
+      p_message_text: parsedBody.data.messageText,
     });
-    return;
+
+    if (!rpcMessageResult.error) {
+      const rpcMessageRecord = extractRpcRecord(rpcMessageResult.data);
+      parsedMessage = rpcMessageRecord ? toMessageRows([rpcMessageRecord])[0] ?? null : null;
+    } else if (!isMissingRpcFunctionError(rpcMessageResult.error.message)) {
+      if (rpcMessageResult.error.message.includes("CASE_TOUCH_CONFLICT")) {
+        res.status(409).json({
+          status: "error",
+          message: "Ticket message write conflicted with a concurrent update. Please retry.",
+        });
+        return;
+      }
+
+      res.status(500).json({
+        status: "error",
+        message: rpcMessageResult.error.message,
+      });
+      return;
+    }
   }
 
-  await client
-    .from("cases")
-    .update({ updated_at: new Date().toISOString() })
-    .eq("id", caseId.data)
-    .eq("customer_id", customerResult.data.id);
+  if (!parsedMessage) {
+    const messageInsertResult = await client
+      .from("messages")
+      .insert({
+        case_id: caseId.data,
+        sender_id: viewer.sub,
+        sender_role: "Customer",
+        message_type: "text",
+        message_text: parsedBody.data.messageText,
+      })
+      .select("id,case_id,sender_id,sender_role,message_type,message_text,created_at")
+      .single();
 
-  const parsedMessage = toMessageRows([messageInsertResult.data as unknown])[0];
+    if (messageInsertResult.error) {
+      res.status(400).json({
+        status: "error",
+        message: messageInsertResult.error.message,
+      });
+      return;
+    }
+
+    const caseTouchResult = await client
+      .from("cases")
+      .update({ updated_at: new Date().toISOString() })
+      .eq("id", caseId.data)
+      .eq("customer_id", customerResult.data.id)
+      .select("id")
+      .maybeSingle();
+
+    if (caseTouchResult.error) {
+      const cleanupResult = await client.from("messages").delete().eq("id", messageInsertResult.data.id);
+      res.status(500).json({
+        status: "error",
+        message: cleanupResult.error
+          ? "Failed to finalize ticket message write and cleanup also failed. Manual cleanup may be required."
+          : "Failed to finalize ticket message write.",
+      });
+      return;
+    }
+
+    if (!caseTouchResult.data) {
+      const cleanupResult = await client.from("messages").delete().eq("id", messageInsertResult.data.id);
+      res.status(409).json({
+        status: "error",
+        message: cleanupResult.error
+          ? "Ticket message write conflicted with a concurrent update and cleanup failed. Manual cleanup may be required."
+          : "Ticket message write conflicted with a concurrent update. Please retry.",
+      });
+      return;
+    }
+
+    parsedMessage = toMessageRows([messageInsertResult.data as unknown])[0] ?? null;
+  }
+
   if (!parsedMessage) {
     res.status(500).json({
       status: "error",

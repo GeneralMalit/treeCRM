@@ -80,6 +80,24 @@ function ensureSupabase() {
   return supabaseAdmin;
 }
 
+function isMissingRpcFunctionError(message: string | undefined): boolean {
+  if (!message) {
+    return false;
+  }
+
+  const normalized = message.toLowerCase();
+  return normalized.includes("could not find the function") || normalized.includes("function") && normalized.includes("does not exist");
+}
+
+function extractRpcRecord(data: unknown): Record<string, unknown> | null {
+  if (Array.isArray(data)) {
+    const [first] = data;
+    return isRecord(first) ? first : null;
+  }
+
+  return isRecord(data) ? data : null;
+}
+
 function toUserRows(rows: unknown[]): UserRow[] {
   return rows
     .filter((row): row is Record<string, unknown> => isRecord(row))
@@ -435,27 +453,97 @@ router.post("/employee/cases/:caseId/messages", requireAuth, requireRole("CSR"),
     return;
   }
 
-  const messageInsertResult = await client
-    .from("messages")
-    .insert({
-      case_id: parsedCase.id,
-      sender_id: viewer.sub,
-      sender_role: "CSR",
-      message_type: "text",
-      message_text: parsedBody.data.messageText,
-    })
-    .select("id,case_id,sender_id,sender_role,message_type,message_text,created_at")
-    .single();
+  let parsedMessage: CaseMessageRow | null = null;
 
-  if (messageInsertResult.error) {
-    res.status(500).json({
-      status: "error",
-      message: messageInsertResult.error.message,
+  if (typeof client.rpc === "function") {
+    const rpcMessageResult = await client.rpc("append_csr_case_message_atomic", {
+      p_case_id: parsedCase.id,
+      p_assigned_to: viewer.sub,
+      p_sender_id: viewer.sub,
+      p_message_text: parsedBody.data.messageText,
     });
-    return;
+
+    if (!rpcMessageResult.error) {
+      const rpcMessageRecord = extractRpcRecord(rpcMessageResult.data);
+      parsedMessage = rpcMessageRecord ? toCaseMessageRows([rpcMessageRecord])[0] ?? null : null;
+    } else if (!isMissingRpcFunctionError(rpcMessageResult.error.message)) {
+      if (rpcMessageResult.error.message.includes("CASE_TOUCH_CONFLICT")) {
+        res.status(409).json({
+          status: "error",
+          message: "Case message write conflicted with a concurrent update. Please retry.",
+        });
+        return;
+      }
+
+      res.status(500).json({
+        status: "error",
+        message: rpcMessageResult.error.message,
+      });
+      return;
+    }
   }
 
-  const parsedMessage = toCaseMessageRows([messageInsertResult.data as unknown])[0];
+  if (!parsedMessage) {
+    const messageInsertResult = await client
+      .from("messages")
+      .insert({
+        case_id: parsedCase.id,
+        sender_id: viewer.sub,
+        sender_role: "CSR",
+        message_type: "text",
+        message_text: parsedBody.data.messageText,
+      })
+      .select("id,case_id,sender_id,sender_role,message_type,message_text,created_at")
+      .single();
+
+    if (messageInsertResult.error) {
+      res.status(500).json({
+        status: "error",
+        message: messageInsertResult.error.message,
+      });
+      return;
+    }
+
+    parsedMessage = toCaseMessageRows([messageInsertResult.data as unknown])[0] ?? null;
+    if (!parsedMessage) {
+      res.status(500).json({
+        status: "error",
+        message: "Failed to parse created case message payload.",
+      });
+      return;
+    }
+
+    const caseTouchResult = await client
+      .from("cases")
+      .update({ updated_at: new Date().toISOString() })
+      .eq("id", parsedCase.id)
+      .eq("assigned_to", viewer.sub)
+      .select("id")
+      .maybeSingle();
+
+    if (caseTouchResult.error) {
+      const cleanupResult = await client.from("messages").delete().eq("id", parsedMessage.id);
+      res.status(500).json({
+        status: "error",
+        message: cleanupResult.error
+          ? "Failed to finalize case message write and cleanup also failed. Manual cleanup may be required."
+          : "Failed to finalize case message write.",
+      });
+      return;
+    }
+
+    if (!caseTouchResult.data) {
+      const cleanupResult = await client.from("messages").delete().eq("id", parsedMessage.id);
+      res.status(409).json({
+        status: "error",
+        message: cleanupResult.error
+          ? "Case message write conflicted with a concurrent update and cleanup failed. Manual cleanup may be required."
+          : "Case message write conflicted with a concurrent update. Please retry.",
+      });
+      return;
+    }
+  }
+
   if (!parsedMessage) {
     res.status(500).json({
       status: "error",
@@ -463,12 +551,6 @@ router.post("/employee/cases/:caseId/messages", requireAuth, requireRole("CSR"),
     });
     return;
   }
-
-  await client
-    .from("cases")
-    .update({ updated_at: new Date().toISOString() })
-    .eq("id", parsedCase.id)
-    .eq("assigned_to", viewer.sub);
 
   const senderName = getDisplayName({ name: viewer.name, email: viewer.email });
 

@@ -34,7 +34,7 @@ Definition of done:
 - [ ] Rotate `SUPABASE_SERVICE_ROLE_KEY`
 - [ ] Rotate `JWT_SECRET`
 - [x] DROPPED (PoC scope): Rotate/reset exposed user passwords (PoC has no real external user base; avoid operational overhead)
-- [ ] Remove real secrets from `backend/.env` and `secrets.md`
+- [ ] Remove real secrets from local `backend/.env` and keep any local secret notes untracked/sanitized
 - [x] Add/update sanitized `.env.example` placeholders only
 - [x] DROPPED (PoC scope): Purge secret-bearing history using approved process (high operational cost; not required for PoC demonstration)
 - [x] Enable secret scanning in CI for PRs/pushes
@@ -68,18 +68,18 @@ Definition of done:
 
 ### P1-1 Make CSR message send atomic/idempotent
 - [x] Validate dependencies before write operations
-- [ ] Wrap multi-step write path in transaction/RPC where feasible
+- [x] Implement transactional RPC path for CSR/customer message write + case-touch (`20260316_session_20_atomic_case_writes.sql`); apply migration in Supabase envs
 - [x] DROPPED (PoC scope): Add idempotency key support for retries (use transaction-first approach for PoC)
 - [x] Add tests for transient failure + retry behavior
-- [ ] Add test to confirm no duplicate messages on client retry
+- [x] Add test to confirm no duplicate messages on client retry
 
 Definition of done:
-- [ ] API response and persisted state remain consistent
-- [ ] Basic retry path does not create duplicate messages
+- [x] API response and persisted state remain consistent via compensating rollback when case touch fails
+- [x] Basic retry path does not create duplicate messages
 
 ### P1-2 Make ticket creation fully atomic
-- [ ] Move case + bootstrap message creation into one transactional operation
-- [ ] Return success only after full transaction commit
+- [x] Implement transactional RPC path for case + bootstrap-message creation (`20260316_session_20_atomic_case_writes.sql`); apply migration in Supabase envs
+- [x] Backend returns success only after the atomic path commits (with fallback retained for pre-migration environments)
 - [x] Add handling for legacy partial-write cleanup if needed
 - [x] DROPPED (PoC scope): Add integration tests for failure injection and retries (valuable but not required for PoC milestone)
 
