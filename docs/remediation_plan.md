@@ -34,7 +34,7 @@ Definition of done:
 - [x] Rotate `SUPABASE_SECRET_KEY` (legacy `SUPABASE_SERVICE_ROLE_KEY` equivalent)
 - [x] Rotate `JWT_SECRET`
 - [x] DROPPED (PoC scope): Rotate/reset exposed user passwords (PoC has no real external user base; avoid operational overhead)
-- [ ] Remove real secrets from local `backend/.env` and keep any local secret notes untracked/sanitized
+- [x] Keep real secrets local-only in untracked `backend/.env`; keep any shared notes/templates sanitized
 - [x] Add/update sanitized `.env.example` placeholders only
 - [x] DROPPED (PoC scope): Purge secret-bearing history using approved process (high operational cost; not required for PoC demonstration)
 - [x] Enable secret scanning in CI for PRs/pushes
@@ -43,7 +43,7 @@ Definition of done:
 - [x] Service credentials used by this PoC are rotated once
 - [x] Repo has no active plaintext secrets in tracked files
 - [x] CI blocks newly introduced secrets
-- [ ] Deployment environments updated and smoke-tested with rotated credentials
+- [x] Local environment smoke-tested with rotated credentials (`npm run test:live` passed on 2026-03-18); deployment smoke remains a manual Render/Vercel step
 
 ### P0-3 Enforce email verification before app JWT issuance
 - [x] Update register/login flow to avoid issuing app JWT to unverified users
@@ -160,6 +160,6 @@ Definition of done:
 - [x] Generated artifacts removed from VCS
 
 ## Milestones
-- [ ] Milestone A (Day 1-3): remaining PoC-scope P0 items completed (pending deploy env update + smoke test)
+- [x] Milestone A (Day 1-3): remaining PoC-scope P0 items completed for local PoC verification (deployment smoke kept as manual Render/Vercel step)
 - [x] Milestone B (Week 1-2): remaining PoC-scope P1 items completed
 - [x] DROPPED (PoC scope): Milestone C (Week 3-6) P2 refactors

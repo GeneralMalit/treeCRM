@@ -169,7 +169,7 @@ async function run() {
     );
     ensureOk(csrTree.response, csrTree.body, "Failed to fetch CSR tree.");
     const treeHasTicket =
-      csrTree.body.data?.data.some((employee) =>
+      csrTree.body.data?.some((employee) =>
         employee.customers.some((customer) => customer.cases.some((caseItem) => caseItem.id === ticketId)),
       ) ?? false;
     if (!treeHasTicket) {
