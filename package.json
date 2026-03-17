@@ -1,6 +1,6 @@
 {
   "name": "treecrm",
-  "version": "1.0.3",
+  "version": "1.0.4",
   "private": true,
   "scripts": {
     "version:sync": "node scripts/sync-version.mjs",
