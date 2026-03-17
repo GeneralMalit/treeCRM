@@ -218,7 +218,7 @@ router.get("/employee/cases/:caseId/messages", requireAuth, requireRole("CSR"), 
   if (!client) {
     res.status(500).json({
       status: "error",
-      message: "SUPABASE_SERVICE_ROLE_KEY is required in backend/.env for employee chat operations.",
+      message: "SUPABASE_SECRET_KEY (or legacy SUPABASE_SERVICE_ROLE_KEY) is required in backend/.env for employee chat operations.",
     });
     return;
   }
@@ -366,7 +366,7 @@ router.post("/employee/cases/:caseId/messages", requireAuth, requireRole("CSR"),
   if (!client) {
     res.status(500).json({
       status: "error",
-      message: "SUPABASE_SERVICE_ROLE_KEY is required in backend/.env for employee chat operations.",
+      message: "SUPABASE_SECRET_KEY (or legacy SUPABASE_SERVICE_ROLE_KEY) is required in backend/.env for employee chat operations.",
     });
     return;
   }
@@ -600,7 +600,7 @@ router.get(
     if (!client) {
       res.status(500).json({
         status: "error",
-        message: "SUPABASE_SERVICE_ROLE_KEY is required in backend/.env for employee chat operations.",
+        message: "SUPABASE_SECRET_KEY (or legacy SUPABASE_SERVICE_ROLE_KEY) is required in backend/.env for employee chat operations.",
       });
       return;
     }
@@ -672,7 +672,7 @@ router.get(
     if (!client) {
       res.status(500).json({
         status: "error",
-        message: "SUPABASE_SERVICE_ROLE_KEY is required in backend/.env for employee chat operations.",
+        message: "SUPABASE_SECRET_KEY (or legacy SUPABASE_SERVICE_ROLE_KEY) is required in backend/.env for employee chat operations.",
       });
       return;
     }
@@ -791,7 +791,7 @@ router.post(
     if (!client) {
       res.status(500).json({
         status: "error",
-        message: "SUPABASE_SERVICE_ROLE_KEY is required in backend/.env for employee chat operations.",
+        message: "SUPABASE_SECRET_KEY (or legacy SUPABASE_SERVICE_ROLE_KEY) is required in backend/.env for employee chat operations.",
       });
       return;
     }
@@ -931,3 +931,4 @@ router.post(
 );
 
 export const employeeChatRouter = router;
+

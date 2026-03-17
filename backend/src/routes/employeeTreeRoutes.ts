@@ -365,7 +365,7 @@ async function fetchCase(caseId: string): Promise<ValidationResult<CaseRow | nul
   const client = ensureSupabase();
   if (!client) {
     return {
-      error: "SUPABASE_SERVICE_ROLE_KEY is required in backend/.env for employee tree queries.",
+      error: "SUPABASE_SECRET_KEY (or legacy SUPABASE_SERVICE_ROLE_KEY) is required in backend/.env for employee tree queries.",
     };
   }
 
@@ -580,7 +580,7 @@ router.get("/employee/tree", requireAuth, requireRole("CSR", "Manager", "Executi
   if (!client) {
     res.status(500).json({
       status: "error",
-      message: "SUPABASE_SERVICE_ROLE_KEY is required in backend/.env for employee tree queries.",
+      message: "SUPABASE_SECRET_KEY (or legacy SUPABASE_SERVICE_ROLE_KEY) is required in backend/.env for employee tree queries.",
     });
     return;
   }
@@ -902,7 +902,7 @@ router.get("/employee/cases/:caseId/manage", requireAuth, requireRole("CSR"), as
   if (!client) {
     res.status(500).json({
       status: "error",
-      message: "SUPABASE_SERVICE_ROLE_KEY is required in backend/.env for employee tree queries.",
+      message: "SUPABASE_SECRET_KEY (or legacy SUPABASE_SERVICE_ROLE_KEY) is required in backend/.env for employee tree queries.",
     });
     return;
   }
@@ -994,7 +994,7 @@ router.patch("/employee/cases/:caseId", requireAuth, requireRole("CSR"), async (
   if (!client) {
     res.status(500).json({
       status: "error",
-      message: "SUPABASE_SERVICE_ROLE_KEY is required in backend/.env for employee tree queries.",
+      message: "SUPABASE_SECRET_KEY (or legacy SUPABASE_SERVICE_ROLE_KEY) is required in backend/.env for employee tree queries.",
     });
     return;
   }
@@ -1108,7 +1108,7 @@ router.put("/employee/cases/:caseId/tags", requireAuth, requireRole("CSR"), asyn
   if (!client) {
     res.status(500).json({
       status: "error",
-      message: "SUPABASE_SERVICE_ROLE_KEY is required in backend/.env for employee tree queries.",
+      message: "SUPABASE_SECRET_KEY (or legacy SUPABASE_SERVICE_ROLE_KEY) is required in backend/.env for employee tree queries.",
     });
     return;
   }
@@ -1255,7 +1255,7 @@ router.post("/employee/cases/:caseId/notes", requireAuth, requireRole("CSR"), as
   if (!client) {
     res.status(500).json({
       status: "error",
-      message: "SUPABASE_SERVICE_ROLE_KEY is required in backend/.env for employee tree queries.",
+      message: "SUPABASE_SECRET_KEY (or legacy SUPABASE_SERVICE_ROLE_KEY) is required in backend/.env for employee tree queries.",
     });
     return;
   }
@@ -1362,7 +1362,7 @@ router.get(
     if (!client) {
       res.status(500).json({
         status: "error",
-        message: "SUPABASE_SERVICE_ROLE_KEY is required in backend/.env for employee workflow queries.",
+        message: "SUPABASE_SECRET_KEY (or legacy SUPABASE_SERVICE_ROLE_KEY) is required in backend/.env for employee workflow queries.",
       });
       return;
     }
@@ -1513,7 +1513,7 @@ router.post("/employee/cases/:caseId/endorsements", requireAuth, requireRole("CS
   if (!client) {
     res.status(500).json({
       status: "error",
-      message: "SUPABASE_SERVICE_ROLE_KEY is required in backend/.env for employee workflow queries.",
+      message: "SUPABASE_SECRET_KEY (or legacy SUPABASE_SERVICE_ROLE_KEY) is required in backend/.env for employee workflow queries.",
     });
     return;
   }
@@ -1694,7 +1694,7 @@ router.patch(
     if (!client) {
       res.status(500).json({
         status: "error",
-        message: "SUPABASE_SERVICE_ROLE_KEY is required in backend/.env for employee workflow queries.",
+        message: "SUPABASE_SECRET_KEY (or legacy SUPABASE_SERVICE_ROLE_KEY) is required in backend/.env for employee workflow queries.",
       });
       return;
     }
@@ -1880,7 +1880,7 @@ router.patch(
     if (!client) {
       res.status(500).json({
         status: "error",
-        message: "SUPABASE_SERVICE_ROLE_KEY is required in backend/.env for employee workflow queries.",
+        message: "SUPABASE_SECRET_KEY (or legacy SUPABASE_SERVICE_ROLE_KEY) is required in backend/.env for employee workflow queries.",
       });
       return;
     }
@@ -2083,3 +2083,4 @@ router.patch(
 );
 
 export const employeeTreeRouter = router;
+

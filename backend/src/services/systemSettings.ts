@@ -179,7 +179,7 @@ export async function getSystemSettings(): Promise<SystemSettings> {
 
 export async function upsertSystemSettings(input: Partial<SystemSettings>): Promise<SystemSettings> {
   if (!hasSupabaseAdmin || !supabaseAdmin) {
-    throw new Error("SUPABASE_SERVICE_ROLE_KEY is required in backend/.env for admin settings.");
+    throw new Error("SUPABASE_SECRET_KEY (or legacy SUPABASE_SERVICE_ROLE_KEY) is required in backend/.env for admin settings.");
   }
 
   const upserts: Array<{ key: string; value: unknown; description: string }> = [];
@@ -273,3 +273,4 @@ export function parseSystemSettingsPatch(body: unknown):
 
   return { data: patch };
 }
+

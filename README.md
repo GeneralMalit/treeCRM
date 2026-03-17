@@ -70,7 +70,8 @@ treeCRM/
 - `FRONTEND_ORIGIN`
 - `SUPABASE_URL`
 - `SUPABASE_KEY`
-- `SUPABASE_SERVICE_ROLE_KEY`
+- `SUPABASE_SECRET_KEY` (preferred)
+- `SUPABASE_SERVICE_ROLE_KEY` (legacy fallback)
 - `JWT_SECRET`
 
 ### Frontend

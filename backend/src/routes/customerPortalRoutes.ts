@@ -219,7 +219,7 @@ async function ensureCustomerProfile(viewer: {
   const client = ensureSupabase();
   if (!client) {
     return {
-      error: "SUPABASE_SERVICE_ROLE_KEY is required in backend/.env for customer portal operations.",
+      error: "SUPABASE_SECRET_KEY (or legacy SUPABASE_SERVICE_ROLE_KEY) is required in backend/.env for customer portal operations.",
     };
   }
 
@@ -287,7 +287,7 @@ async function chooseCsrAssignee(): Promise<ValidationResult<UserRow>> {
   const client = ensureSupabase();
   if (!client) {
     return {
-      error: "SUPABASE_SERVICE_ROLE_KEY is required in backend/.env for customer portal operations.",
+      error: "SUPABASE_SECRET_KEY (or legacy SUPABASE_SERVICE_ROLE_KEY) is required in backend/.env for customer portal operations.",
     };
   }
 
@@ -365,7 +365,7 @@ async function fetchCustomerCase(
   const client = ensureSupabase();
   if (!client) {
     return {
-      error: "SUPABASE_SERVICE_ROLE_KEY is required in backend/.env for customer portal operations.",
+      error: "SUPABASE_SECRET_KEY (or legacy SUPABASE_SERVICE_ROLE_KEY) is required in backend/.env for customer portal operations.",
     };
   }
 
@@ -403,7 +403,7 @@ router.get("/portal/tickets", async (req, res) => {
   if (!client) {
     res.status(500).json({
       status: "error",
-      message: "SUPABASE_SERVICE_ROLE_KEY is required in backend/.env for customer portal operations.",
+      message: "SUPABASE_SECRET_KEY (or legacy SUPABASE_SERVICE_ROLE_KEY) is required in backend/.env for customer portal operations.",
     });
     return;
   }
@@ -493,7 +493,7 @@ router.post("/portal/tickets", async (req, res) => {
   if (!client) {
     res.status(500).json({
       status: "error",
-      message: "SUPABASE_SERVICE_ROLE_KEY is required in backend/.env for customer portal operations.",
+      message: "SUPABASE_SECRET_KEY (or legacy SUPABASE_SERVICE_ROLE_KEY) is required in backend/.env for customer portal operations.",
     });
     return;
   }
@@ -672,7 +672,7 @@ router.get("/portal/tickets/:caseId", async (req, res) => {
   if (!client) {
     res.status(500).json({
       status: "error",
-      message: "SUPABASE_SERVICE_ROLE_KEY is required in backend/.env for customer portal operations.",
+      message: "SUPABASE_SECRET_KEY (or legacy SUPABASE_SERVICE_ROLE_KEY) is required in backend/.env for customer portal operations.",
     });
     return;
   }
@@ -810,7 +810,7 @@ router.post("/portal/tickets/:caseId/customer-satisfaction", async (req, res) =>
   if (!client) {
     res.status(500).json({
       status: "error",
-      message: "SUPABASE_SERVICE_ROLE_KEY is required in backend/.env for customer portal operations.",
+      message: "SUPABASE_SECRET_KEY (or legacy SUPABASE_SERVICE_ROLE_KEY) is required in backend/.env for customer portal operations.",
     });
     return;
   }
@@ -947,7 +947,7 @@ router.post("/portal/tickets/:caseId/messages", async (req, res) => {
   if (!client) {
     res.status(500).json({
       status: "error",
-      message: "SUPABASE_SERVICE_ROLE_KEY is required in backend/.env for customer portal operations.",
+      message: "SUPABASE_SECRET_KEY (or legacy SUPABASE_SERVICE_ROLE_KEY) is required in backend/.env for customer portal operations.",
     });
     return;
   }
@@ -1135,3 +1135,4 @@ router.post("/portal/tickets/:caseId/messages", async (req, res) => {
 });
 
 export const customerPortalRouter = router;
+

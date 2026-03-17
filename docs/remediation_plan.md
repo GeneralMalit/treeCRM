@@ -31,8 +31,8 @@ Definition of done:
 - [x] Only authorized admins can assign privileged roles
 
 ### P0-2 Rotate leaked secrets and remove plaintext credentials
-- [ ] Rotate `SUPABASE_SERVICE_ROLE_KEY`
-- [ ] Rotate `JWT_SECRET`
+- [x] Rotate `SUPABASE_SECRET_KEY` (legacy `SUPABASE_SERVICE_ROLE_KEY` equivalent)
+- [x] Rotate `JWT_SECRET`
 - [x] DROPPED (PoC scope): Rotate/reset exposed user passwords (PoC has no real external user base; avoid operational overhead)
 - [ ] Remove real secrets from local `backend/.env` and keep any local secret notes untracked/sanitized
 - [x] Add/update sanitized `.env.example` placeholders only
@@ -40,9 +40,10 @@ Definition of done:
 - [x] Enable secret scanning in CI for PRs/pushes
 
 Definition of done:
-- [ ] Service credentials used by this PoC are rotated once
-- [ ] Repo has no active plaintext secrets in tracked files
+- [x] Service credentials used by this PoC are rotated once
+- [x] Repo has no active plaintext secrets in tracked files
 - [x] CI blocks newly introduced secrets
+- [ ] Deployment environments updated and smoke-tested with rotated credentials
 
 ### P0-3 Enforce email verification before app JWT issuance
 - [x] Update register/login flow to avoid issuing app JWT to unverified users
@@ -151,7 +152,7 @@ Definition of done:
 
 ## Cross-cutting validation checklist
 - [x] Registration cannot assign privileged roles
-- [ ] PoC service credentials rotated and plaintext secrets removed from tracked files
+- [x] PoC service credentials rotated and plaintext secrets removed from tracked files
 - [x] Unverified users cannot access protected routes
 - [x] Core chat/ticket flows are atomic in normal operation paths
 - [x] Coverage thresholds enforced in CI
@@ -159,6 +160,6 @@ Definition of done:
 - [x] Generated artifacts removed from VCS
 
 ## Milestones
-- [ ] Milestone A (Day 1-3): remaining PoC-scope P0 items completed
+- [ ] Milestone A (Day 1-3): remaining PoC-scope P0 items completed (pending deploy env update + smoke test)
 - [x] Milestone B (Week 1-2): remaining PoC-scope P1 items completed
 - [x] DROPPED (PoC scope): Milestone C (Week 3-6) P2 refactors

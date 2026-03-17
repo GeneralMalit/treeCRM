@@ -8,7 +8,7 @@ export const supabase = hasSupabaseConfig
   : null;
 
 export const supabaseAdmin = hasSupabaseAdminConfig
-  ? createClient(env.supabaseUrl, env.supabaseServiceRoleKey, {
+  ? createClient(env.supabaseUrl, env.supabaseAdminKey, {
       auth: { persistSession: false, autoRefreshToken: false },
     })
   : null;

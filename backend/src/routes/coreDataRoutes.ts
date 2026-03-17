@@ -27,7 +27,7 @@ function ensureSupabase(res: Response) {
   if (!hasSupabaseAdmin || !supabaseAdmin) {
     res.status(500).json({
       status: "error",
-      message: "SUPABASE_SERVICE_ROLE_KEY is required in backend/.env for admin data operations.",
+      message: "SUPABASE_SECRET_KEY (or legacy SUPABASE_SERVICE_ROLE_KEY) is required in backend/.env for admin data operations.",
     });
     return null;
   }
@@ -1006,3 +1006,4 @@ for (const resource of resources) {
 }
 
 export const coreDataRouter = router;
+
