@@ -8,6 +8,7 @@ export type AdminUser = {
   email: string;
   name: string | null;
   role: Role;
+  managerId: string | null;
   createdAt: string;
 };
 
@@ -92,6 +93,7 @@ function parseAdminUser(value: unknown): AdminUser {
     typeof value.email !== "string" ||
     (typeof value.name !== "string" && value.name !== null) ||
     !isRole(value.role) ||
+    (typeof value.manager_id !== "string" && value.manager_id !== null && typeof value.manager_id !== "undefined") ||
     typeof value.created_at !== "string"
   ) {
     throw new Error("Unexpected admin user payload format.");
@@ -102,6 +104,7 @@ function parseAdminUser(value: unknown): AdminUser {
     email: value.email,
     name: value.name,
     role: value.role,
+    managerId: typeof value.manager_id === "string" ? value.manager_id : null,
     createdAt: value.created_at,
   };
 }
@@ -188,7 +191,7 @@ export async function fetchAdminUsers(accessToken: string): Promise<AdminUser[]>
 
 export async function createAdminUser(
   accessToken: string,
-  payload: { email: string; password: string; role: Role; name?: string },
+  payload: { email: string; password: string; role: Role; name?: string; managerId?: string | null },
 ): Promise<void> {
   await requestWithAuth(accessToken, "/data/users", {
     method: "POST",
@@ -199,7 +202,7 @@ export async function createAdminUser(
 export async function updateAdminUser(
   accessToken: string,
   userId: string,
-  payload: { email?: string; name?: string | null; role?: Role },
+  payload: { email?: string; name?: string | null; role?: Role; managerId?: string | null },
 ): Promise<void> {
   await requestWithAuth(accessToken, `/data/users/${userId}`, {
     method: "PATCH",

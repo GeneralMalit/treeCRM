@@ -55,6 +55,67 @@ async function loadCoreDataApp() {
 }
 
 describe("coreDataRoutes", () => {
+  it("rejects creating a CSR user without managerId", async () => {
+    const { app } = await loadCoreDataApp();
+    const adminToken = signTestJwt({
+      sub: "admin-1",
+      email: "admin@example.com",
+      role: "Admin",
+    });
+
+    const response = await request(app)
+      .post("/data/users")
+      .set("Authorization", `Bearer ${adminToken}`)
+      .send({
+        email: "csr@example.com",
+        password: "long-enough-password",
+        role: "CSR",
+      });
+
+    expect(response.status).toBe(400);
+    expect(response.body.message).toBe("managerId is required when role is CSR.");
+  });
+
+  it("rejects creating a CSR user when managerId does not reference a Manager", async () => {
+    const { app } = await loadCoreDataApp();
+    const adminToken = signTestJwt({
+      sub: "admin-1",
+      email: "admin@example.com",
+      role: "Admin",
+    });
+
+    const response = await request(app)
+      .post("/data/users")
+      .set("Authorization", `Bearer ${adminToken}`)
+      .send({
+        email: "csr@example.com",
+        password: "long-enough-password",
+        role: "CSR",
+        managerId: "550e8400-e29b-41d4-a716-446655440000",
+      });
+
+    expect(response.status).toBe(400);
+    expect(response.body.message).toBe("managerId must reference a Manager user.");
+  });
+
+  it("rejects updating role to CSR without a manager assignment", async () => {
+    const { app, updateUserById } = await loadCoreDataApp();
+    const adminToken = signTestJwt({
+      sub: "admin-1",
+      email: "admin@example.com",
+      role: "Admin",
+    });
+
+    const response = await request(app)
+      .patch("/data/users/550e8400-e29b-41d4-a716-446655440000")
+      .set("Authorization", `Bearer ${adminToken}`)
+      .send({ role: "CSR", managerId: null });
+
+    expect(response.status).toBe(400);
+    expect(response.body.message).toBe("managerId is required when role is CSR.");
+    expect(updateUserById).not.toHaveBeenCalled();
+  });
+
   it("blocks non-admin users from assigning privileged roles", async () => {
     const { app, updateUserById } = await loadCoreDataApp();
     const customerToken = signTestJwt({

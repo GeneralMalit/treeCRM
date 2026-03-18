@@ -61,6 +61,7 @@ type UserDraft = {
   name: string;
   email: string;
   role: Role;
+  managerId: string | null;
 };
 
 type TagDraft = {
@@ -69,8 +70,14 @@ type TagDraft = {
   affectsNodeColor: boolean;
 };
 
-const USER_ROLES: Role[] = ["CSR", "Manager", "Executive", "Admin", "Customer"];
+const EMPLOYEE_ROLES = ["CSR", "Manager", "Executive"] as const;
+type EmployeeRole = (typeof EMPLOYEE_ROLES)[number];
+const ADMIN_ROLE_OPTIONS: Role[] = ["Admin", "Manager", "Executive"];
 const CASE_PRIORITIES: Array<"High" | "Medium" | "Low"> = ["High", "Medium", "Low"];
+
+function isEmployeeRole(role: Role): role is EmployeeRole {
+  return EMPLOYEE_ROLES.includes(role as EmployeeRole);
+}
 
 function buildUserDrafts(users: AdminUser[]): Record<string, UserDraft> {
   const drafts: Record<string, UserDraft> = {};
@@ -79,6 +86,7 @@ function buildUserDrafts(users: AdminUser[]): Record<string, UserDraft> {
       name: user.name ?? "",
       email: user.email,
       role: user.role,
+      managerId: user.managerId,
     };
   }
   return drafts;
@@ -101,11 +109,17 @@ export function AdminWorkspace() {
   const [state, setState] = useState<ViewState>({ status: "loading" });
   const [loadingData, setLoadingData] = useState(false);
 
-  const [createUserEmail, setCreateUserEmail] = useState("");
-  const [createUserPassword, setCreateUserPassword] = useState("");
-  const [createUserName, setCreateUserName] = useState("");
-  const [createUserRole, setCreateUserRole] = useState<Role>("CSR");
-  const [creatingUser, setCreatingUser] = useState(false);
+  const [createEmployeeEmail, setCreateEmployeeEmail] = useState("");
+  const [createEmployeePassword, setCreateEmployeePassword] = useState("");
+  const [createEmployeeName, setCreateEmployeeName] = useState("");
+  const [createEmployeeRole, setCreateEmployeeRole] = useState<EmployeeRole>("CSR");
+  const [createEmployeeManagerId, setCreateEmployeeManagerId] = useState("");
+  const [creatingEmployee, setCreatingEmployee] = useState(false);
+
+  const [createAdminEmail, setCreateAdminEmail] = useState("");
+  const [createAdminPassword, setCreateAdminPassword] = useState("");
+  const [createAdminName, setCreateAdminName] = useState("");
+  const [creatingAdmin, setCreatingAdmin] = useState(false);
 
   const [createTagName, setCreateTagName] = useState("");
   const [createTagColor, setCreateTagColor] = useState("#6B7280");
@@ -121,6 +135,22 @@ export function AdminWorkspace() {
   );
 
   const readyData = state.status === "ready" ? state.data : null;
+  const managerOptions = useMemo(
+    () => (readyData ? readyData.users.filter((user) => user.role === "Manager") : []),
+    [readyData],
+  );
+  const employeeUsers = useMemo(
+    () => (readyData ? readyData.users.filter((user) => isEmployeeRole(user.role)) : []),
+    [readyData],
+  );
+  const adminUsers = useMemo(
+    () => (readyData ? readyData.users.filter((user) => user.role === "Admin") : []),
+    [readyData],
+  );
+  const promotableUsers = useMemo(
+    () => (readyData ? readyData.users.filter((user) => user.role !== "Admin") : []),
+    [readyData],
+  );
 
   const loadAdminData = async (accessToken: string) => {
     setLoadingData(true);
@@ -256,7 +286,7 @@ export function AdminWorkspace() {
     }
   };
 
-  const handleCreateUser = async (event: FormEvent<HTMLFormElement>) => {
+  const handleCreateEmployee = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (state.status !== "ready") {
       return;
@@ -268,29 +298,74 @@ export function AdminWorkspace() {
       return;
     }
 
-    setCreatingUser(true);
+    if (createEmployeeRole === "CSR" && !createEmployeeManagerId) {
+      setActionMessage({ type: "error", text: "CSR accounts require a manager assignment." });
+      return;
+    }
+
+    setCreatingEmployee(true);
     setActionMessage(null);
     try {
       await createAdminUser(accessToken, {
-        email: createUserEmail,
-        password: createUserPassword,
-        role: createUserRole,
-        ...(createUserName.trim() ? { name: createUserName.trim() } : {}),
+        email: createEmployeeEmail,
+        password: createEmployeePassword,
+        role: createEmployeeRole,
+        ...(createEmployeeName.trim() ? { name: createEmployeeName.trim() } : {}),
+        managerId: createEmployeeRole === "CSR" ? createEmployeeManagerId : null,
       });
 
       await loadAdminData(accessToken);
-      setCreateUserEmail("");
-      setCreateUserPassword("");
-      setCreateUserName("");
-      setCreateUserRole("CSR");
-      setActionMessage({ type: "success", text: "User created." });
+      setCreateEmployeeEmail("");
+      setCreateEmployeePassword("");
+      setCreateEmployeeName("");
+      setCreateEmployeeRole("CSR");
+      setCreateEmployeeManagerId("");
+      setActionMessage({ type: "success", text: "Employee account created." });
     } catch (error) {
       setActionMessage({
         type: "error",
-        text: error instanceof Error ? error.message : "Failed to create user.",
+        text: error instanceof Error ? error.message : "Failed to create employee account.",
       });
     } finally {
-      setCreatingUser(false);
+      setCreatingEmployee(false);
+    }
+  };
+
+  const handleCreateAdminAccount = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (state.status !== "ready") {
+      return;
+    }
+
+    const accessToken = getStoredAccessToken();
+    if (!accessToken) {
+      router.replace("/login");
+      return;
+    }
+
+    setCreatingAdmin(true);
+    setActionMessage(null);
+    try {
+      await createAdminUser(accessToken, {
+        email: createAdminEmail,
+        password: createAdminPassword,
+        role: "Admin",
+        ...(createAdminName.trim() ? { name: createAdminName.trim() } : {}),
+        managerId: null,
+      });
+
+      await loadAdminData(accessToken);
+      setCreateAdminEmail("");
+      setCreateAdminPassword("");
+      setCreateAdminName("");
+      setActionMessage({ type: "success", text: "Admin account created." });
+    } catch (error) {
+      setActionMessage({
+        type: "error",
+        text: error instanceof Error ? error.message : "Failed to create admin account.",
+      });
+    } finally {
+      setCreatingAdmin(false);
     }
   };
 
@@ -312,10 +387,16 @@ export function AdminWorkspace() {
 
     setActionMessage(null);
     try {
+      if (draft.role === "CSR" && !draft.managerId) {
+        setActionMessage({ type: "error", text: "CSR accounts require a manager assignment." });
+        return;
+      }
+
       await updateAdminUser(accessToken, userId, {
         email: draft.email,
         name: draft.name.trim() ? draft.name.trim() : null,
         role: draft.role,
+        managerId: draft.role === "CSR" ? draft.managerId : null,
       });
       await loadAdminData(accessToken);
       setActionMessage({ type: "success", text: "User updated." });
@@ -323,6 +404,33 @@ export function AdminWorkspace() {
       setActionMessage({
         type: "error",
         text: error instanceof Error ? error.message : "Failed to update user.",
+      });
+    }
+  };
+
+  const handlePromoteToAdmin = async (userId: string) => {
+    if (state.status !== "ready") {
+      return;
+    }
+
+    const accessToken = getStoredAccessToken();
+    if (!accessToken) {
+      router.replace("/login");
+      return;
+    }
+
+    setActionMessage(null);
+    try {
+      await updateAdminUser(accessToken, userId, {
+        role: "Admin",
+        managerId: null,
+      });
+      await loadAdminData(accessToken);
+      setActionMessage({ type: "success", text: "User promoted to Admin." });
+    } catch (error) {
+      setActionMessage({
+        type: "error",
+        text: error instanceof Error ? error.message : "Failed to promote user.",
       });
     }
   };
@@ -529,132 +637,325 @@ export function AdminWorkspace() {
 
         {readyData && (
           <Stack direction={{ xs: "column", lg: "row" }} spacing={2}>
-            <Paper elevation={1} sx={{ p: 2.5, flex: 1.4 }}>
-              <Typography variant="h6">Users & Roles</Typography>
-              <Typography variant="body2" color="text.secondary" sx={{ mb: 1.5 }}>
-                Create accounts and manage role assignments.
-              </Typography>
-              <Divider sx={{ mb: 1.5 }} />
+            <Stack spacing={2} sx={{ flex: 1.4 }}>
+              <Paper elevation={1} sx={{ p: 2.5 }}>
+                <Typography variant="h6">Employee Workspace Accounts</Typography>
+                <Typography variant="body2" color="text.secondary" sx={{ mb: 1.5 }}>
+                  Provision and manage CSR, Manager, and Executive accounts.
+                </Typography>
+                <Divider sx={{ mb: 1.5 }} />
 
-              <Stack component="form" spacing={1} onSubmit={handleCreateUser} sx={{ mb: 2 }}>
-                <TextField
-                  label="Email"
-                  value={createUserEmail}
-                  onChange={(event) => setCreateUserEmail(event.target.value)}
-                  required
-                />
-                <TextField
-                  label="Password"
-                  type="password"
-                  value={createUserPassword}
-                  onChange={(event) => setCreateUserPassword(event.target.value)}
-                  required
-                />
-                <TextField
-                  label="Name (optional)"
-                  value={createUserName}
-                  onChange={(event) => setCreateUserName(event.target.value)}
-                />
-                <FormControl>
-                  <InputLabel id="create-user-role-label">Role</InputLabel>
-                  <Select
-                    labelId="create-user-role-label"
-                    label="Role"
-                    value={createUserRole}
-                    onChange={(event) => setCreateUserRole(event.target.value as Role)}
-                  >
-                    {USER_ROLES.map((role) => (
-                      <MenuItem key={role} value={role}>
-                        {role}
-                      </MenuItem>
-                    ))}
-                  </Select>
-                </FormControl>
-                <Button type="submit" variant="contained" disabled={creatingUser}>
-                  {creatingUser ? "Creating..." : "Create User"}
-                </Button>
-              </Stack>
+                <Stack component="form" spacing={1} onSubmit={handleCreateEmployee} sx={{ mb: 2 }}>
+                  <TextField
+                    label="Email"
+                    value={createEmployeeEmail}
+                    onChange={(event) => setCreateEmployeeEmail(event.target.value)}
+                    required
+                  />
+                  <TextField
+                    label="Temporary Password"
+                    type="password"
+                    value={createEmployeePassword}
+                    onChange={(event) => setCreateEmployeePassword(event.target.value)}
+                    required
+                  />
+                  <TextField
+                    label="Name (optional)"
+                    value={createEmployeeName}
+                    onChange={(event) => setCreateEmployeeName(event.target.value)}
+                  />
+                  <FormControl>
+                    <InputLabel id="create-employee-role-label">Role</InputLabel>
+                    <Select
+                      labelId="create-employee-role-label"
+                      label="Role"
+                      value={createEmployeeRole}
+                      onChange={(event) => {
+                        const nextRole = event.target.value as EmployeeRole;
+                        setCreateEmployeeRole(nextRole);
+                        if (nextRole !== "CSR") {
+                          setCreateEmployeeManagerId("");
+                        }
+                      }}
+                    >
+                      {EMPLOYEE_ROLES.map((role) => (
+                        <MenuItem key={role} value={role}>
+                          {role}
+                        </MenuItem>
+                      ))}
+                    </Select>
+                  </FormControl>
+                  {createEmployeeRole === "CSR" && (
+                    <FormControl required>
+                      <InputLabel id="create-employee-manager-label">Assigned Manager</InputLabel>
+                      <Select
+                        labelId="create-employee-manager-label"
+                        label="Assigned Manager"
+                        value={createEmployeeManagerId}
+                        onChange={(event) => setCreateEmployeeManagerId(event.target.value)}
+                      >
+                        {managerOptions.map((manager) => (
+                          <MenuItem key={manager.id} value={manager.id}>
+                            {manager.name ? `${manager.name} (${manager.email})` : manager.email}
+                          </MenuItem>
+                        ))}
+                      </Select>
+                    </FormControl>
+                  )}
+                  <Button type="submit" variant="contained" disabled={creatingEmployee}>
+                    {creatingEmployee ? "Creating..." : "Create Employee"}
+                  </Button>
+                </Stack>
 
-              <Stack spacing={1}>
-                {readyData.users.map((user) => {
-                  const draft = userDrafts[user.id] ?? {
-                    name: user.name ?? "",
-                    email: user.email,
-                    role: user.role,
-                  };
-                  const isCurrentUser = user.id === readyData.user.id;
+                <Stack spacing={1}>
+                  {employeeUsers.map((user) => {
+                    const draft = userDrafts[user.id] ?? {
+                      name: user.name ?? "",
+                      email: user.email,
+                      role: user.role,
+                      managerId: user.managerId,
+                    };
 
-                  return (
-                    <Paper key={user.id} variant="outlined" sx={{ p: 1.25, borderColor: "#E5E7EB" }}>
-                      <Stack spacing={1}>
-                        <Stack direction={{ xs: "column", sm: "row" }} spacing={1} alignItems={{ sm: "center" }}>
-                          <Chip size="small" label={user.role} />
-                          <Typography variant="caption" color="text.secondary">
-                            {user.id}
-                          </Typography>
-                        </Stack>
-                        <TextField
-                          size="small"
-                          label="Name"
-                          value={draft.name}
-                          onChange={(event) =>
-                            setUserDrafts((current) => ({
-                              ...current,
-                              [user.id]: { ...draft, name: event.target.value },
-                            }))
-                          }
-                        />
-                        <TextField
-                          size="small"
-                          label="Email"
-                          value={draft.email}
-                          onChange={(event) =>
-                            setUserDrafts((current) => ({
-                              ...current,
-                              [user.id]: { ...draft, email: event.target.value },
-                            }))
-                          }
-                        />
-                        <FormControl size="small">
-                          <InputLabel id={`user-role-${user.id}`}>Role</InputLabel>
-                          <Select
-                            labelId={`user-role-${user.id}`}
-                            label="Role"
-                            value={draft.role}
+                    return (
+                      <Paper key={user.id} variant="outlined" sx={{ p: 1.25, borderColor: "#E5E7EB" }}>
+                        <Stack spacing={1}>
+                          <Stack direction={{ xs: "column", sm: "row" }} spacing={1} alignItems={{ sm: "center" }}>
+                            <Chip size="small" label={user.role} />
+                            <Typography variant="caption" color="text.secondary">
+                              {user.id}
+                            </Typography>
+                          </Stack>
+                          <TextField
+                            size="small"
+                            label="Name"
+                            value={draft.name}
                             onChange={(event) =>
                               setUserDrafts((current) => ({
                                 ...current,
-                                [user.id]: { ...draft, role: event.target.value as Role },
+                                [user.id]: { ...draft, name: event.target.value },
                               }))
                             }
-                          >
-                            {USER_ROLES.map((role) => (
-                              <MenuItem key={role} value={role}>
-                                {role}
-                              </MenuItem>
-                            ))}
-                          </Select>
-                        </FormControl>
-                        <Stack direction="row" spacing={1}>
-                          <Button size="small" variant="contained" onClick={() => void handleSaveUser(user.id)}>
-                            Save
-                          </Button>
-                          <Button
+                          />
+                          <TextField
                             size="small"
-                            color="error"
-                            variant="outlined"
-                            disabled={isCurrentUser}
-                            onClick={() => void handleDeleteUser(user.id)}
-                          >
-                            Delete
-                          </Button>
+                            label="Email"
+                            value={draft.email}
+                            onChange={(event) =>
+                              setUserDrafts((current) => ({
+                                ...current,
+                                [user.id]: { ...draft, email: event.target.value },
+                              }))
+                            }
+                          />
+                          <FormControl size="small">
+                            <InputLabel id={`employee-role-${user.id}`}>Role</InputLabel>
+                            <Select
+                              labelId={`employee-role-${user.id}`}
+                              label="Role"
+                              value={draft.role}
+                              onChange={(event) =>
+                                setUserDrafts((current) => ({
+                                  ...current,
+                                  [user.id]: { ...draft, role: event.target.value as EmployeeRole },
+                                }))
+                              }
+                            >
+                              {EMPLOYEE_ROLES.map((role) => (
+                                <MenuItem key={role} value={role}>
+                                  {role}
+                                </MenuItem>
+                              ))}
+                            </Select>
+                          </FormControl>
+                          {draft.role === "CSR" && (
+                            <FormControl size="small" required>
+                              <InputLabel id={`employee-manager-${user.id}`}>Assigned Manager</InputLabel>
+                              <Select
+                                labelId={`employee-manager-${user.id}`}
+                                label="Assigned Manager"
+                                value={draft.managerId ?? ""}
+                                onChange={(event) =>
+                                  setUserDrafts((current) => ({
+                                    ...current,
+                                    [user.id]: { ...draft, managerId: event.target.value || null },
+                                  }))
+                                }
+                              >
+                                {managerOptions.map((manager) => (
+                                  <MenuItem key={manager.id} value={manager.id}>
+                                    {manager.name ? `${manager.name} (${manager.email})` : manager.email}
+                                  </MenuItem>
+                                ))}
+                              </Select>
+                            </FormControl>
+                          )}
+                          <Stack direction="row" spacing={1}>
+                            <Button size="small" variant="contained" onClick={() => void handleSaveUser(user.id)}>
+                              Save
+                            </Button>
+                            <Button
+                              size="small"
+                              color="error"
+                              variant="outlined"
+                              onClick={() => void handleDeleteUser(user.id)}
+                            >
+                              Delete
+                            </Button>
+                          </Stack>
                         </Stack>
+                      </Paper>
+                    );
+                  })}
+                </Stack>
+              </Paper>
+
+              <Paper elevation={1} sx={{ p: 2.5 }}>
+                <Typography variant="h6">Admin Management</Typography>
+                <Typography variant="body2" color="text.secondary" sx={{ mb: 1.5 }}>
+                  Create additional admins and promote existing users with guardrails.
+                </Typography>
+                <Divider sx={{ mb: 1.5 }} />
+
+                <Stack component="form" spacing={1} onSubmit={handleCreateAdminAccount} sx={{ mb: 2 }}>
+                  <TextField
+                    label="Admin Email"
+                    value={createAdminEmail}
+                    onChange={(event) => setCreateAdminEmail(event.target.value)}
+                    required
+                  />
+                  <TextField
+                    label="Temporary Password"
+                    type="password"
+                    value={createAdminPassword}
+                    onChange={(event) => setCreateAdminPassword(event.target.value)}
+                    required
+                  />
+                  <TextField
+                    label="Name (optional)"
+                    value={createAdminName}
+                    onChange={(event) => setCreateAdminName(event.target.value)}
+                  />
+                  <Button type="submit" variant="contained" disabled={creatingAdmin}>
+                    {creatingAdmin ? "Creating..." : "Create Admin"}
+                  </Button>
+                </Stack>
+
+                <Stack spacing={1} sx={{ mb: 2 }}>
+                  <Typography variant="subtitle2">Promote Existing Users</Typography>
+                  {promotableUsers.length === 0 && (
+                    <Typography variant="body2" color="text.secondary">
+                      No promotable users available.
+                    </Typography>
+                  )}
+                  {promotableUsers.map((user) => (
+                    <Paper key={user.id} variant="outlined" sx={{ p: 1.25, borderColor: "#E5E7EB" }}>
+                      <Stack direction={{ xs: "column", sm: "row" }} spacing={1} alignItems={{ sm: "center" }}>
+                        <Typography variant="body2" sx={{ flex: 1 }}>
+                          {user.name ? `${user.name} (${user.email})` : user.email}
+                        </Typography>
+                        <Chip size="small" label={user.role} />
+                        <Button size="small" variant="outlined" onClick={() => void handlePromoteToAdmin(user.id)}>
+                          Promote to Admin
+                        </Button>
                       </Stack>
                     </Paper>
-                  );
-                })}
-              </Stack>
-            </Paper>
+                  ))}
+                </Stack>
+
+                <Stack spacing={1}>
+                  <Typography variant="subtitle2">Admin Accounts</Typography>
+                  {adminUsers.map((user) => {
+                    const draft = userDrafts[user.id] ?? {
+                      name: user.name ?? "",
+                      email: user.email,
+                      role: user.role,
+                      managerId: user.managerId,
+                    };
+                    const isCurrentUser = user.id === readyData.user.id;
+                    const selfDemotion = isCurrentUser && draft.role !== "Admin";
+
+                    return (
+                      <Paper key={user.id} variant="outlined" sx={{ p: 1.25, borderColor: "#E5E7EB" }}>
+                        <Stack spacing={1}>
+                          <Stack direction={{ xs: "column", sm: "row" }} spacing={1} alignItems={{ sm: "center" }}>
+                            <Chip size="small" label={user.role} />
+                            <Typography variant="caption" color="text.secondary">
+                              {user.id}
+                            </Typography>
+                          </Stack>
+                          <TextField
+                            size="small"
+                            label="Name"
+                            value={draft.name}
+                            onChange={(event) =>
+                              setUserDrafts((current) => ({
+                                ...current,
+                                [user.id]: { ...draft, name: event.target.value },
+                              }))
+                            }
+                          />
+                          <TextField
+                            size="small"
+                            label="Email"
+                            value={draft.email}
+                            onChange={(event) =>
+                              setUserDrafts((current) => ({
+                                ...current,
+                                [user.id]: { ...draft, email: event.target.value },
+                              }))
+                            }
+                          />
+                          <FormControl size="small">
+                            <InputLabel id={`admin-role-${user.id}`}>Role</InputLabel>
+                            <Select
+                              labelId={`admin-role-${user.id}`}
+                              label="Role"
+                              value={draft.role}
+                              onChange={(event) =>
+                                setUserDrafts((current) => ({
+                                  ...current,
+                                  [user.id]: { ...draft, role: event.target.value as Role },
+                                }))
+                              }
+                            >
+                              {ADMIN_ROLE_OPTIONS.map((role) => (
+                                <MenuItem key={role} value={role}>
+                                  {role}
+                                </MenuItem>
+                              ))}
+                            </Select>
+                          </FormControl>
+                          {selfDemotion && (
+                            <Typography variant="caption" color="error">
+                              You cannot demote your own admin account.
+                            </Typography>
+                          )}
+                          <Stack direction="row" spacing={1}>
+                            <Button
+                              size="small"
+                              variant="contained"
+                              disabled={selfDemotion}
+                              onClick={() => void handleSaveUser(user.id)}
+                            >
+                              Save
+                            </Button>
+                            <Button
+                              size="small"
+                              color="error"
+                              variant="outlined"
+                              disabled={isCurrentUser}
+                              onClick={() => void handleDeleteUser(user.id)}
+                            >
+                              Delete
+                            </Button>
+                          </Stack>
+                        </Stack>
+                      </Paper>
+                    );
+                  })}
+                </Stack>
+              </Paper>
+            </Stack>
 
             <Stack spacing={2} sx={{ flex: 1 }}>
               <Paper elevation={1} sx={{ p: 2.5 }}>

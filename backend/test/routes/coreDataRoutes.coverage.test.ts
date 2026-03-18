@@ -419,7 +419,7 @@ describe("coreDataRoutes coverage", () => {
     expect(createUser).toHaveBeenCalled();
     expect(response.body).toMatchObject({
       status: "ok",
-      message: "Auth user created. Public users row may still be syncing from auth metadata.",
+      message: "Auth user created. Public users row may still be syncing from auth metadata and manager assignment updates.",
       data: {
         id: USER_ID,
         email: "created@example.com",
@@ -458,7 +458,7 @@ describe("coreDataRoutes coverage", () => {
   });
 
   it("returns sync-pending fallback when user update succeeds but synced row is missing", async () => {
-    const maybeSingle = vi
+    const selectMaybeSingle = vi
       .fn()
       .mockResolvedValueOnce(
         ok({
@@ -476,14 +476,25 @@ describe("coreDataRoutes coverage", () => {
     const supabaseAdmin = {
       from(table: string) {
         if (table === "users") {
+          let updateMode = false;
           const builder = {
             select() {
+              return builder;
+            },
+            update() {
+              updateMode = true;
               return builder;
             },
             eq() {
               return builder;
             },
-            maybeSingle,
+            maybeSingle() {
+              if (updateMode) {
+                updateMode = false;
+                return Promise.resolve(ok(null));
+              }
+              return selectMaybeSingle();
+            },
           };
           return builder;
         }
@@ -522,7 +533,7 @@ describe("coreDataRoutes coverage", () => {
     });
     expect(response.body).toMatchObject({
       status: "ok",
-      message: "Auth user updated. Public users row may still be syncing from auth metadata.",
+      message: "Auth user updated. Public users row may still be syncing from auth metadata and manager assignment updates.",
       data: {
         id: USER_ID,
         email: "updated@example.com",
@@ -530,6 +541,148 @@ describe("coreDataRoutes coverage", () => {
         name: "Target User",
       },
     });
+  });
+
+  it("blocks self-demotion for admin users", async () => {
+    const selfAdminToken = signTestJwt({
+      sub: USER_ID,
+      email: "admin@example.com",
+      role: "Admin",
+    });
+
+    const { app, updateUserById } = await loadCoreDataApp({
+      plan: {
+        users: {
+          maybeSingle: ok({
+            id: USER_ID,
+            email: "admin@example.com",
+            name: "Admin User",
+            role: "Admin",
+          }),
+        },
+      },
+    });
+
+    const response = await request(app)
+      .patch(`/data/users/${USER_ID}`)
+      .set("Authorization", `Bearer ${selfAdminToken}`)
+      .send({ role: "Manager" });
+
+    expect(response.status).toBe(400);
+    expect(response.body.message).toBe("Admin users cannot demote their own account.");
+    expect(updateUserById).not.toHaveBeenCalled();
+  });
+
+  it("blocks demotion of the last remaining admin", async () => {
+    const { app, updateUserById } = await loadCoreDataApp({
+      plan: {
+        users: {
+          maybeSingle: ok({
+            id: USER_ID,
+            email: "admin@example.com",
+            name: "Admin User",
+            role: "Admin",
+          }),
+          list: ok([{ id: USER_ID }]),
+        },
+      },
+    });
+
+    const response = await request(app)
+      .patch(`/data/users/${USER_ID}`)
+      .set("Authorization", `Bearer ${adminToken}`)
+      .send({ role: "Manager" });
+
+    expect(response.status).toBe(400);
+    expect(response.body.message).toBe("Cannot demote the last remaining Admin account.");
+    expect(updateUserById).not.toHaveBeenCalled();
+  });
+
+  it("allows demotion when another admin account exists", async () => {
+    const { app, updateUserById } = await loadCoreDataApp({
+      plan: {
+        users: {
+          maybeSingle: ok({
+            id: USER_ID,
+            email: "admin@example.com",
+            name: "Admin User",
+            role: "Admin",
+          }),
+          list: ok([{ id: USER_ID }, { id: "550e8400-e29b-41d4-a716-446655440099" }]),
+        },
+      },
+    });
+
+    const response = await request(app)
+      .patch(`/data/users/${USER_ID}`)
+      .set("Authorization", `Bearer ${adminToken}`)
+      .send({ role: "Manager" });
+
+    expect(response.status).toBe(200);
+    expect(updateUserById).toHaveBeenCalled();
+  });
+
+  it("blocks self-delete for admin users", async () => {
+    const selfAdminToken = signTestJwt({
+      sub: USER_ID,
+      email: "admin@example.com",
+      role: "Admin",
+    });
+
+    const { app, deleteUser } = await loadCoreDataApp();
+    const response = await request(app)
+      .delete(`/data/users/${USER_ID}`)
+      .set("Authorization", `Bearer ${selfAdminToken}`);
+
+    expect(response.status).toBe(400);
+    expect(response.body.message).toBe("Admin users cannot delete their own account.");
+    expect(deleteUser).not.toHaveBeenCalled();
+  });
+
+  it("blocks deletion of the last remaining admin", async () => {
+    const { app, deleteUser } = await loadCoreDataApp({
+      plan: {
+        users: {
+          maybeSingle: ok({
+            id: USER_ID,
+            role: "Admin",
+          }),
+          list: ok([{ id: USER_ID }]),
+        },
+      },
+    });
+
+    const response = await request(app)
+      .delete(`/data/users/${USER_ID}`)
+      .set("Authorization", `Bearer ${adminToken}`);
+
+    expect(response.status).toBe(400);
+    expect(response.body.message).toBe("Cannot delete the last remaining Admin account.");
+    expect(deleteUser).not.toHaveBeenCalled();
+  });
+
+  it("allows deleting an admin when another admin account exists", async () => {
+    const deleteUser = vi.fn().mockResolvedValue({ data: {}, error: null });
+    const { app } = await loadCoreDataApp({
+      deleteUser,
+      plan: {
+        users: {
+          maybeSingle: ok({
+            id: USER_ID,
+            role: "Admin",
+          }),
+          list: ok([{ id: USER_ID }, { id: "550e8400-e29b-41d4-a716-446655440099" }]),
+          delete: ok(null),
+        },
+      },
+    });
+
+    const response = await request(app)
+      .delete(`/data/users/${USER_ID}`)
+      .set("Authorization", `Bearer ${adminToken}`);
+
+    expect(response.status).toBe(200);
+    expect(deleteUser).toHaveBeenCalledWith(USER_ID);
   });
 
   it("returns fallback when auth delete succeeds and public row was already removed", async () => {

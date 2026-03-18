@@ -18,6 +18,7 @@ const CASE_PRIORITIES = ["Low", "Medium", "High"] as const;
 const MESSAGE_TYPES = ["text", "internal_note", "system"] as const;
 const ENDORSEMENT_STATUSES = ["Pending", "Accepted", "Rejected", "Cancelled"] as const;
 const ROLES = ["CSR", "Manager", "Executive", "Admin", "Customer"] as const;
+type Role = (typeof ROLES)[number];
 
 const router = express.Router();
 
@@ -164,18 +165,23 @@ function parseUserCreate(body: Record<string, unknown>) {
   const name = readString(body.name, "name", { required: false });
   if ("error" in name) return name;
 
+  const managerId =
+    body.managerId === null ? ({ data: null } as ValidationResult<string | null>) : readUuid(body.managerId, "managerId", false);
+  if ("error" in managerId) return managerId;
+
   return {
     data: {
       email: email.data,
       password: password.data,
       role: role.data,
       name: name.data ?? null,
+      managerId: managerId.data ?? null,
     },
   };
 }
 
 function parseUserUpdate(body: Record<string, unknown>) {
-  const presence = ensureFieldsPresent(body, ["email", "name", "role"]);
+  const presence = ensureFieldsPresent(body, ["email", "name", "role", "managerId"]);
   if ("error" in presence) return presence;
 
   const data: Record<string, unknown> = {};
@@ -202,7 +208,79 @@ function parseUserUpdate(body: Record<string, unknown>) {
     data.role = role.data;
   }
 
+  if (Object.hasOwn(body, "managerId")) {
+    if (body.managerId === null) {
+      data.managerId = null;
+    } else {
+      const managerId = readUuid(body.managerId, "managerId", false);
+      if ("error" in managerId) return managerId;
+      data.managerId = managerId.data ?? null;
+    }
+  }
+
   return { data };
+}
+
+async function validateManagerAssignment(
+  client: NonNullable<typeof supabaseAdmin>,
+  role: Role,
+  managerId: string | null,
+): Promise<ValidationResult<{ managerId: string | null }>> {
+  if (role !== "CSR") {
+    return { data: { managerId: null } };
+  }
+
+  if (!managerId) {
+    return { error: "managerId is required when role is CSR." };
+  }
+
+  const { data: managerUser, error: managerLookupError } = await client
+    .from("users")
+    .select("id,role")
+    .eq("id", managerId)
+    .maybeSingle();
+
+  if (managerLookupError) {
+    return { error: managerLookupError.message };
+  }
+
+  if (!managerUser) {
+    return { error: "managerId must reference an existing Manager user." };
+  }
+
+  if (managerUser.role !== "Manager") {
+    return { error: "managerId must reference a Manager user." };
+  }
+
+  return { data: { managerId } };
+}
+
+async function persistUserManagerAssignment(
+  client: NonNullable<typeof supabaseAdmin>,
+  userId: string,
+  managerId: string | null,
+): Promise<ValidationResult<{ synced: boolean }>> {
+  const { data, error } = await client
+    .from("users")
+    .update({ manager_id: managerId })
+    .eq("id", userId)
+    .select("*")
+    .maybeSingle();
+
+  if (error) {
+    return { error: error.message };
+  }
+
+  return { data: { synced: Boolean(data) } };
+}
+
+async function countAdminUsers(client: NonNullable<typeof supabaseAdmin>): Promise<ValidationResult<number>> {
+  const { data, error } = await client.from("users").select("id").eq("role", "Admin");
+  if (error) {
+    return { error: error.message };
+  }
+
+  return { data: Array.isArray(data) ? data.length : 0 };
 }
 
 function parseCustomerCreate(body: Record<string, unknown>) {
@@ -694,6 +772,14 @@ router.post("/users", async (req, res) => {
     return;
   }
 
+  const managerValidation = await validateManagerAssignment(client, parsed.data.role, parsed.data.managerId);
+  if ("error" in managerValidation) {
+    res.status(400).json({ status: "error", message: managerValidation.error });
+    return;
+  }
+
+  const shouldPersistManagerAssignment = parsed.data.role === "CSR";
+
   const createResult = await client.auth.admin.createUser({
     email: String(parsed.data.email),
     password: String(parsed.data.password),
@@ -712,16 +798,35 @@ router.post("/users", async (req, res) => {
     return;
   }
 
+  let managerAssignmentSynced = true;
+  if (shouldPersistManagerAssignment) {
+    const managerPersistence = await persistUserManagerAssignment(
+      client,
+      createResult.data.user.id,
+      managerValidation.data.managerId,
+    );
+    if ("error" in managerPersistence) {
+      res.status(500).json({
+        status: "error",
+        message: `Auth user created but failed to persist manager assignment: ${managerPersistence.error}`,
+      });
+      return;
+    }
+    managerAssignmentSynced = managerPersistence.data.synced;
+  }
+
   const { data, error } = await fetchSingleRecord("users", createResult.data.user.id);
-  if (error || !data) {
+  if (error || !data || !managerAssignmentSynced) {
     res.status(201).json({
       status: "ok",
-      message: "Auth user created. Public users row may still be syncing from auth metadata.",
+      message:
+        "Auth user created. Public users row may still be syncing from auth metadata and manager assignment updates.",
       data: {
         id: createResult.data.user.id,
         email: createResult.data.user.email,
         role: parsed.data.role,
         name: parsed.data.name,
+        manager_id: managerValidation.data.managerId,
       },
     });
     return;
@@ -781,7 +886,7 @@ router.patch("/users/:id", async (req, res) => {
 
   const { data: existingUser, error: existingUserError } = await client
     .from("users")
-    .select("id,email,name,role")
+    .select("id,email,name,role,manager_id")
     .eq("id", id)
     .maybeSingle();
 
@@ -797,7 +902,7 @@ router.patch("/users/:id", async (req, res) => {
 
   const nextEmail =
     typeof parsed.data.email === "string" ? parsed.data.email : String(existingUser.email ?? "");
-  const nextRole = typeof parsed.data.role === "string" ? parsed.data.role : String(existingUser.role ?? "");
+  const nextRole = (typeof parsed.data.role === "string" ? parsed.data.role : String(existingUser.role ?? "")) as Role;
   const nextName =
     parsed.data.name === null
       ? null
@@ -806,6 +911,46 @@ router.patch("/users/:id", async (req, res) => {
         : typeof existingUser.name === "string"
           ? existingUser.name
           : null;
+  const nextManagerId =
+    parsed.data.managerId === null
+      ? null
+      : typeof parsed.data.managerId === "string"
+        ? parsed.data.managerId
+        : typeof existingUser.manager_id === "string"
+          ? existingUser.manager_id
+          : null;
+
+  const managerValidation = await validateManagerAssignment(client, nextRole, nextManagerId);
+  if ("error" in managerValidation) {
+    res.status(400).json({ status: "error", message: managerValidation.error });
+    return;
+  }
+
+  const isSelfTarget = req.user?.sub === id;
+  const isAdminDemotion = existingUser.role === "Admin" && nextRole !== "Admin";
+  if (isSelfTarget && isAdminDemotion) {
+    res.status(400).json({
+      status: "error",
+      message: "Admin users cannot demote their own account.",
+    });
+    return;
+  }
+
+  if (isAdminDemotion) {
+    const adminCountResult = await countAdminUsers(client);
+    if ("error" in adminCountResult) {
+      res.status(500).json({ status: "error", message: adminCountResult.error });
+      return;
+    }
+
+    if (adminCountResult.data <= 1) {
+      res.status(400).json({
+        status: "error",
+        message: "Cannot demote the last remaining Admin account.",
+      });
+      return;
+    }
+  }
 
   const updateResult = await client.auth.admin.updateUserById(id, {
     email: nextEmail || undefined,
@@ -820,16 +965,27 @@ router.patch("/users/:id", async (req, res) => {
     return;
   }
 
+  const managerPersistence = await persistUserManagerAssignment(client, id, managerValidation.data.managerId);
+  if ("error" in managerPersistence) {
+    res.status(500).json({
+      status: "error",
+      message: `Auth user updated but failed to persist manager assignment: ${managerPersistence.error}`,
+    });
+    return;
+  }
+
   const { data, error } = await fetchSingleRecord("users", id);
-  if (error || !data) {
+  if (error || !data || !managerPersistence.data.synced) {
     res.status(200).json({
       status: "ok",
-      message: "Auth user updated. Public users row may still be syncing from auth metadata.",
+      message:
+        "Auth user updated. Public users row may still be syncing from auth metadata and manager assignment updates.",
       data: {
         id,
         email: nextEmail || existingUser.email,
         role: nextRole || existingUser.role,
         name: nextName,
+        manager_id: managerValidation.data.managerId,
       },
     });
     return;
@@ -846,6 +1002,41 @@ router.delete("/users/:id", async (req, res) => {
   if (!isUuid(id)) {
     res.status(400).json({ status: "error", message: "id must be a valid UUID." });
     return;
+  }
+
+  if (req.user?.sub === id) {
+    res.status(400).json({
+      status: "error",
+      message: "Admin users cannot delete their own account.",
+    });
+    return;
+  }
+
+  const { data: existingUser, error: existingUserError } = await client
+    .from("users")
+    .select("id,role")
+    .eq("id", id)
+    .maybeSingle();
+
+  if (existingUserError) {
+    res.status(500).json({ status: "error", message: existingUserError.message });
+    return;
+  }
+
+  if (existingUser?.role === "Admin") {
+    const adminCountResult = await countAdminUsers(client);
+    if ("error" in adminCountResult) {
+      res.status(500).json({ status: "error", message: adminCountResult.error });
+      return;
+    }
+
+    if (adminCountResult.data <= 1) {
+      res.status(400).json({
+        status: "error",
+        message: "Cannot delete the last remaining Admin account.",
+      });
+      return;
+    }
   }
 
   const adminDeleteResult = await client.auth.admin.deleteUser(id);
