@@ -65,6 +65,16 @@ export function parseUuidParam(raw: unknown, fieldName: string): ValidationResul
 export function parseStringField(
   value: unknown,
   fieldName: string,
+  options?: { required?: true; allowEmpty?: boolean; maxLength?: number },
+): ValidationResult<string>;
+export function parseStringField(
+  value: unknown,
+  fieldName: string,
+  options: { required: false; allowEmpty?: boolean; maxLength?: number },
+): ValidationResult<string | undefined>;
+export function parseStringField(
+  value: unknown,
+  fieldName: string,
   options?: { required?: boolean; allowEmpty?: boolean; maxLength?: number },
 ): ValidationResult<string | undefined> {
   const required = options?.required ?? true;
@@ -148,9 +158,9 @@ export function parseTicketCreateBody(body: unknown): ValidationResult<{
 
   return {
     data: {
-      subject: subject.data as string,
-      description: description.data as string,
-      category: category.data as string,
+      subject: subject.data,
+      description: description.data,
+      category: category.data,
       attachments: attachments.data,
     },
   };
@@ -166,7 +176,7 @@ export function parseCreateMessageBody(body: unknown): ValidationResult<{ messag
     return messageText;
   }
 
-  return { data: { messageText: messageText.data as string } };
+  return { data: { messageText: messageText.data } };
 }
 
 export function parseCustomerSatisfactionBody(body: unknown): ValidationResult<{ rating: number }> {

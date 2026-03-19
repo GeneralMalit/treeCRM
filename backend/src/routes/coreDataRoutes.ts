@@ -44,6 +44,8 @@ function isUuid(value: string): boolean {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
 }
 
+function readUuid(value: unknown, fieldName: string): ValidationResult<string>;
+function readUuid(value: unknown, fieldName: string, required: false): ValidationResult<string | undefined>;
 function readUuid(value: unknown, fieldName: string, required = true): ValidationResult<string | undefined> {
   if (typeof value === "undefined" || value === null) {
     return required ? { error: `${fieldName} is required.` } : { data: undefined };
@@ -56,6 +58,16 @@ function readUuid(value: unknown, fieldName: string, required = true): Validatio
   return { data: value.trim() };
 }
 
+function readString(
+  value: unknown,
+  fieldName: string,
+  options?: { required?: true; allowEmpty?: boolean },
+): ValidationResult<string>;
+function readString(
+  value: unknown,
+  fieldName: string,
+  options: { required: false; allowEmpty?: boolean },
+): ValidationResult<string | undefined>;
 function readString(
   value: unknown,
   fieldName: string,
@@ -80,6 +92,12 @@ function readString(
   return { data: allowEmpty ? value : normalized };
 }
 
+function readBoolean(value: unknown, fieldName: string): ValidationResult<boolean>;
+function readBoolean(
+  value: unknown,
+  fieldName: string,
+  required: false,
+): ValidationResult<boolean | undefined>;
 function readBoolean(
   value: unknown,
   fieldName: string,
@@ -96,6 +114,12 @@ function readBoolean(
   return { data: value };
 }
 
+function readObject(value: unknown, fieldName: string): ValidationResult<Record<string, unknown>>;
+function readObject(
+  value: unknown,
+  fieldName: string,
+  required: false,
+): ValidationResult<Record<string, unknown> | undefined>;
 function readObject(
   value: unknown,
   fieldName: string,
@@ -112,6 +136,17 @@ function readObject(
   return { data: value };
 }
 
+function readEnum<T extends readonly string[]>(
+  value: unknown,
+  fieldName: string,
+  allowedValues: T,
+): ValidationResult<T[number]>;
+function readEnum<T extends readonly string[]>(
+  value: unknown,
+  fieldName: string,
+  allowedValues: T,
+  required: false,
+): ValidationResult<T[number] | undefined>;
 function readEnum<T extends readonly string[]>(
   value: unknown,
   fieldName: string,
