@@ -38,6 +38,43 @@ type LoaderOptions = {
   };
 };
 
+function createSequencedUsersTable(options: {
+  selectResults?: Array<ReturnType<typeof ok>>;
+  updateResults?: Array<ReturnType<typeof ok>>;
+}) {
+  const selectResults = [...(options.selectResults ?? [])];
+  const updateResults = [...(options.updateResults ?? [])];
+  let mode: "select" | "update" = "select";
+
+  const builder = {
+    select() {
+      mode = "select";
+      return builder;
+    },
+    update() {
+      mode = "update";
+      return builder;
+    },
+    eq() {
+      return builder;
+    },
+    maybeSingle() {
+      const result = mode === "update" ? updateResults.shift() ?? ok(null) : selectResults.shift() ?? ok(null);
+      return Promise.resolve(result);
+    },
+    single() {
+      const result = mode === "update" ? updateResults.shift() ?? ok(null) : selectResults.shift() ?? ok(null);
+      return Promise.resolve(result);
+    },
+    then(onFulfilled: (value: ReturnType<typeof ok>) => unknown, onRejected?: (reason: unknown) => unknown) {
+      const result = mode === "update" ? updateResults.shift() ?? ok(null) : selectResults.shift() ?? ok(null);
+      return Promise.resolve(result).then(onFulfilled, onRejected);
+    },
+  };
+
+  return builder;
+}
+
 async function loadCoreDataApp(options: LoaderOptions = {}) {
   vi.resetModules();
   vi.doMock("../../src/config/env", () => ({
@@ -429,6 +466,183 @@ describe("coreDataRoutes coverage", () => {
     });
   });
 
+  it("creates a CSR with a valid manager assignment", async () => {
+    const createUser = vi.fn().mockResolvedValue({
+      data: { user: { id: USER_ID, email: "csr@example.com" } },
+      error: null,
+    });
+    const usersTable = createSequencedUsersTable({
+      selectResults: [
+        ok({
+          id: MANAGER_ID,
+          role: "Manager",
+        }),
+        ok({
+          id: USER_ID,
+          email: "csr@example.com",
+          name: "CSR User",
+          role: "CSR",
+          manager_id: MANAGER_ID,
+        }),
+      ],
+      updateResults: [
+        ok({
+          id: USER_ID,
+          manager_id: MANAGER_ID,
+        }),
+      ],
+    });
+    const { app } = await loadCoreDataApp({
+      createUser,
+      supabaseAdminOverride: {
+        from(table: string) {
+          if (table === "users") {
+            return usersTable;
+          }
+
+          return createSupabaseAdminMock({}).from(table);
+        },
+        auth: {
+          admin: {
+            createUser,
+            updateUserById: vi.fn(),
+            deleteUser: vi.fn(),
+          },
+        },
+      },
+    });
+
+    const response = await request(app)
+      .post("/data/users")
+      .set("Authorization", `Bearer ${adminToken}`)
+      .send({
+        email: "csr@example.com",
+        password: "long-enough-password",
+        role: "CSR",
+        name: "CSR User",
+        managerId: MANAGER_ID,
+      });
+
+    expect(response.status).toBe(201);
+    expect(createUser).toHaveBeenCalledWith({
+      email: "csr@example.com",
+      password: "long-enough-password",
+      email_confirm: true,
+      user_metadata: {
+        role: "CSR",
+        name: "CSR User",
+      },
+    });
+    expect(response.body).toMatchObject({
+      status: "ok",
+      data: {
+        id: USER_ID,
+        email: "csr@example.com",
+        role: "CSR",
+        manager_id: MANAGER_ID,
+      },
+    });
+  });
+
+  it("rejects CSR creation with an invalid manager UUID", async () => {
+    const { app } = await loadCoreDataApp();
+
+    const response = await request(app)
+      .post("/data/users")
+      .set("Authorization", `Bearer ${adminToken}`)
+      .send({
+        email: "csr@example.com",
+        password: "long-enough-password",
+        role: "CSR",
+        name: "CSR User",
+        managerId: "not-a-uuid",
+      });
+
+    expect(response.status).toBe(400);
+    expect(response.body.message).toBe("managerId must be a valid UUID.");
+  });
+
+  it("rejects CSR creation when the manager user does not exist", async () => {
+    const usersTable = createSequencedUsersTable({
+      selectResults: [ok(null)],
+    });
+    const { app } = await loadCoreDataApp({
+      supabaseAdminOverride: {
+        from(table: string) {
+          if (table === "users") {
+            return usersTable;
+          }
+
+          return createSupabaseAdminMock({}).from(table);
+        },
+        auth: {
+          admin: {
+            createUser: vi.fn(),
+            updateUserById: vi.fn(),
+            deleteUser: vi.fn(),
+          },
+        },
+      },
+    });
+
+    const response = await request(app)
+      .post("/data/users")
+      .set("Authorization", `Bearer ${adminToken}`)
+      .send({
+        email: "csr@example.com",
+        password: "long-enough-password",
+        role: "CSR",
+        name: "CSR User",
+        managerId: MANAGER_ID,
+      });
+
+    expect(response.status).toBe(400);
+    expect(response.body.message).toBe("managerId must reference an existing Manager user.");
+  });
+
+  it("rejects CSR creation when the referenced manager is not a Manager role", async () => {
+    const usersTable = createSequencedUsersTable({
+      selectResults: [
+        ok({
+          id: MANAGER_ID,
+          role: "Admin",
+        }),
+      ],
+    });
+    const { app } = await loadCoreDataApp({
+      supabaseAdminOverride: {
+        from(table: string) {
+          if (table === "users") {
+            return usersTable;
+          }
+
+          return createSupabaseAdminMock({}).from(table);
+        },
+        auth: {
+          admin: {
+            createUser: vi.fn(),
+            updateUserById: vi.fn(),
+            deleteUser: vi.fn(),
+          },
+        },
+      },
+    });
+
+    const response = await request(app)
+      .post("/data/users")
+      .set("Authorization", `Bearer ${adminToken}`)
+      .send({
+        email: "csr@example.com",
+        password: "long-enough-password",
+        role: "CSR",
+        name: "CSR User",
+        managerId: MANAGER_ID,
+      });
+
+    expect(response.status).toBe(400);
+    expect(response.body.message).toBe("managerId must reference a Manager user.");
+  });
+
   it("rejects invalid user id on lookup", async () => {
     const { app } = await loadCoreDataApp();
 
@@ -543,6 +757,83 @@ describe("coreDataRoutes coverage", () => {
     });
   });
 
+  it("clears CSR manager assignment when the role changes away from CSR", async () => {
+    const updateUserById = vi.fn().mockResolvedValue({
+      data: { user: { id: USER_ID } },
+      error: null,
+    });
+    const usersTable = createSequencedUsersTable({
+      selectResults: [
+        ok({
+          id: USER_ID,
+          email: "csr@example.com",
+          name: "CSR User",
+          role: "CSR",
+          manager_id: MANAGER_ID,
+        }),
+        ok({
+          id: USER_ID,
+          email: "csr@example.com",
+          name: "CSR User",
+          role: "Manager",
+          manager_id: null,
+        }),
+      ],
+      updateResults: [
+        ok({
+          id: USER_ID,
+          email: "csr@example.com",
+          name: "CSR User",
+          role: "Manager",
+          manager_id: null,
+        }),
+      ],
+    });
+    const { app } = await loadCoreDataApp({
+      updateUserById,
+      supabaseAdminOverride: {
+        from(table: string) {
+          if (table === "users") {
+            return usersTable;
+          }
+
+          return createSupabaseAdminMock({}).from(table);
+        },
+        auth: {
+          admin: {
+            createUser: vi.fn(),
+            updateUserById,
+            deleteUser: vi.fn(),
+          },
+        },
+      },
+    });
+
+    const response = await request(app)
+      .patch(`/data/users/${USER_ID}`)
+      .set("Authorization", `Bearer ${adminToken}`)
+      .send({
+        role: "Manager",
+      });
+
+    expect(response.status).toBe(200);
+    expect(updateUserById).toHaveBeenCalledWith(USER_ID, {
+      email: "csr@example.com",
+      user_metadata: {
+        role: "Manager",
+        name: "CSR User",
+      },
+    });
+    expect(response.body).toMatchObject({
+      status: "ok",
+      data: {
+        id: USER_ID,
+        role: "Manager",
+        manager_id: null,
+      },
+    });
+  });
+
   it("blocks self-demotion for admin users", async () => {
     const selfAdminToken = signTestJwt({
       sub: USER_ID,
@@ -620,6 +911,133 @@ describe("coreDataRoutes coverage", () => {
 
     expect(response.status).toBe(200);
     expect(updateUserById).toHaveBeenCalled();
+  });
+
+  it("creates an additional admin account", async () => {
+    const createUser = vi.fn().mockResolvedValue({
+      data: { user: { id: USER_ID, email: "new-admin@example.com" } },
+      error: null,
+    });
+    const { app } = await loadCoreDataApp({
+      createUser,
+      plan: {
+        users: {
+          maybeSingle: ok({
+            id: USER_ID,
+            email: "new-admin@example.com",
+            name: "New Admin",
+            role: "Admin",
+          }),
+        },
+      },
+    });
+
+    const response = await request(app)
+      .post("/data/users")
+      .set("Authorization", `Bearer ${adminToken}`)
+      .send({
+        email: "new-admin@example.com",
+        password: "long-enough-password",
+        role: "Admin",
+        name: "New Admin",
+      });
+
+    expect(response.status).toBe(201);
+    expect(createUser).toHaveBeenCalledWith({
+      email: "new-admin@example.com",
+      password: "long-enough-password",
+      email_confirm: true,
+      user_metadata: {
+        role: "Admin",
+        name: "New Admin",
+      },
+    });
+    expect(response.body).toMatchObject({
+      status: "ok",
+      data: {
+        id: USER_ID,
+        email: "new-admin@example.com",
+        role: "Admin",
+        name: "New Admin",
+      },
+    });
+  });
+
+  it("promotes an existing user to admin", async () => {
+    const updateUserById = vi.fn().mockResolvedValue({
+      data: { user: { id: USER_ID } },
+      error: null,
+    });
+    const usersTable = createSequencedUsersTable({
+      selectResults: [
+        ok({
+          id: USER_ID,
+          email: "promote@example.com",
+          name: "Promote Me",
+          role: "CSR",
+          manager_id: MANAGER_ID,
+        }),
+        ok({
+          id: USER_ID,
+          email: "promote@example.com",
+          name: "Promote Me",
+          role: "Admin",
+          manager_id: null,
+        }),
+      ],
+      updateResults: [
+        ok({
+          id: USER_ID,
+          email: "promote@example.com",
+          name: "Promote Me",
+          role: "Admin",
+          manager_id: null,
+        }),
+      ],
+    });
+    const { app } = await loadCoreDataApp({
+      updateUserById,
+      supabaseAdminOverride: {
+        from(table: string) {
+          if (table === "users") {
+            return usersTable;
+          }
+
+          return createSupabaseAdminMock({}).from(table);
+        },
+        auth: {
+          admin: {
+            createUser: vi.fn(),
+            updateUserById,
+            deleteUser: vi.fn(),
+          },
+        },
+      },
+    });
+
+    const response = await request(app)
+      .patch(`/data/users/${USER_ID}`)
+      .set("Authorization", `Bearer ${adminToken}`)
+      .send({
+        role: "Admin",
+      });
+
+    expect(response.status).toBe(200);
+    expect(updateUserById).toHaveBeenCalledWith(USER_ID, {
+      email: "promote@example.com",
+      user_metadata: {
+        role: "Admin",
+        name: "Promote Me",
+      },
+    });
+    expect(response.body).toMatchObject({
+      status: "ok",
+      data: {
+        id: USER_ID,
+        role: "Admin",
+        manager_id: null,
+      },
+    });
   });
 
   it("blocks self-delete for admin users", async () => {

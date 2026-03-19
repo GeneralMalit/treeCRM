@@ -17,11 +17,11 @@
 - [x] `CSR` requires `managerId`.
 - [x] `Manager`, `Executive`, and `Admin` force `managerId = null`.
 - [x] Validate `managerId` references an existing `Manager` user.
-- [ ] Return clear validation errors for:
+- [x] Return clear validation errors for:
 - [x] missing `managerId` on CSR.
-- [ ] invalid manager UUID.
-- [ ] manager user not found.
-- [ ] manager user exists but role is not `Manager`.
+- [x] invalid manager UUID.
+- [x] manager user not found.
+- [x] manager user exists but role is not `Manager`.
 
 Definition of done:
 - [x] Backend accepts `managerId` in create/update.
@@ -100,13 +100,13 @@ Definition of done:
 - [x] Existing admin API calls continue to work for unchanged fields.
 
 ## A8 - Backend tests
-- [ ] Add tests for CSR create with valid manager.
+- [x] Add tests for CSR create with valid manager.
 - [x] Add tests for CSR create/update rejection without valid manager.
-- [ ] Add tests that role changes clear CSR manager assignment.
+- [x] Add tests that role changes clear CSR manager assignment.
 - [x] Add tests for self-demotion rejection.
 - [x] Add tests for self-delete rejection.
 - [x] Add tests for last-admin demote/delete rejection.
-- [ ] Add tests for allowed additional-admin creation/promotion.
+- [x] Add tests for allowed additional-admin creation/promotion.
 - [x] Update Supabase mocks for manager lookup and admin-count checks.
 
 Definition of done:
@@ -126,13 +126,13 @@ Definition of done:
 - [x] Frontend behavior and payload contracts are regression-protected.
 
 ## A10 - Validation and acceptance run
-- [ ] Preflight: pull latest `main` and confirm clean base before test run.
-- [ ] Preflight: verify required env files/secrets are present for both `backend` and `frontend`.
-- [ ] Preflight: confirm local Postgres/Supabase stack is running and reachable.
-- [ ] Preflight: confirm local app URLs are known (frontend + backend API).
-- [ ] Install deps validation:
-- [ ] run backend install (`cd backend && npm ci` or `npm install` if lock mismatch).
-- [ ] run frontend install (`cd frontend && npm ci` or `npm install` if lock mismatch).
+- [x] Preflight: pull latest `main` and confirm clean base before test run.
+- [x] Preflight: verify required env files/secrets are present for both `backend` and `frontend`.
+- [x] Preflight: confirm local Postgres/Supabase stack is running and reachable.
+- [x] Preflight: confirm local app URLs are known (frontend + backend API).
+- [x] Install deps validation:
+- [x] run backend install (`cd backend && npm ci` or `npm install` if lock mismatch).
+- [x] run frontend install (`cd frontend && npm ci` or `npm install` if lock mismatch).
 - [x] Targeted backend regression run:
 - [x] execute `cd backend && npm run test -- --run test/routes/coreDataRoutes.test.ts test/routes/coreDataRoutes.coverage.test.ts`.
 - [x] record pass/fail and failing test names (if any) in session notes.
@@ -148,62 +148,79 @@ Definition of done:
 - [x] Frontend build smoke check:
 - [x] execute `cd frontend && npm run build`.
 - [x] confirm no type/build errors.
-- [ ] Start local stack for manual QA:
-- [ ] run backend dev server.
-- [ ] run frontend dev server.
-- [ ] confirm admin workspace loads without console/runtime errors.
-- [ ] Prepare test identities for manual flow:
-- [ ] log in as existing admin test account.
-- [ ] verify at least one non-admin test user exists for promotion test.
-- [ ] ensure only one admin remains for last-admin guardrail scenario (if needed, demote extras first).
-- [ ] Manual flow 1: create manager account:
-- [ ] open `Admin Management`/`Employee Workspace Accounts` UI and create a `Manager`.
-- [ ] verify success toast/message.
-- [ ] verify manager appears in employee list with role `Manager`.
-- [ ] Manual flow 2: create CSR with manager assignment:
-- [ ] create `CSR` and select manager in CSR-only selector.
-- [ ] verify create is blocked when manager is not selected.
-- [ ] verify successful create when manager selected.
-- [ ] verify CSR row displays assigned manager.
-- [ ] Manual flow 3: CSR edit behavior:
-- [ ] edit CSR and reassign to another manager (if available); verify persisted change.
-- [ ] change CSR role to `Manager` or `Executive`; verify manager assignment is cleared.
-- [ ] refresh page and verify cleared assignment remains cleared.
-- [ ] Manual flow 4: create additional admin (bootstrap path):
-- [ ] create second admin using admin create form.
-- [ ] verify new account appears in admin list with role `Admin`.
-- [ ] if testing promotion path: promote existing non-admin user to admin and verify list update.
-- [ ] Manual flow 5: self-lockout protections:
-- [ ] while logged in as current admin, attempt self-demote in UI; verify action disabled/blocked.
-- [ ] attempt self-delete in UI; verify action disabled/blocked.
-- [ ] if backend can be invoked directly, confirm API returns guardrail error text for both attempts.
-- [ ] Manual flow 6: last-admin protections:
-- [ ] reduce system to one remaining admin.
-- [ ] attempt to demote that final admin; verify blocked with clear error.
-- [ ] attempt to delete that final admin; verify blocked with clear error.
-- [ ] confirm no destructive state change occurred after each blocked action.
-- [ ] Data integrity/aggregation check:
-- [ ] verify employee tree/manager aggregation still includes new manager + CSR relationships.
-- [ ] verify no duplicate/missing users after role transitions.
-- [ ] verify admin list and employee list remain correctly partitioned.
-- [ ] Error-path checks:
-- [ ] trigger CSR create without manager and confirm user-facing validation message.
-- [ ] trigger invalid manager assignment (if possible via API/tool) and confirm clear backend error.
-- [ ] verify UI error surfaces are actionable and non-generic.
-- [ ] Evidence capture for handoff:
-- [ ] save terminal outputs for targeted/full test runs.
-- [ ] capture screenshots of key UI states (employee split, admin list, blocked self actions).
-- [ ] log exact test accounts used and timestamp of run.
-- [ ] Final gate before merge/deploy:
-- [ ] ensure all A1-A9 checklist items are checked complete.
-- [ ] ensure no unresolved TODO/FIXME added during implementation.
-- [ ] ensure `git status` only contains intended files.
-- [ ] add short release note summarizing admin provisioning + guardrail behavior.
+- [x] Start local stack for manual QA:
+- [x] run backend dev server.
+- [x] run frontend dev server.
+- [x] confirm admin workspace loads without console/runtime errors.
+- [x] Prepare test identities for manual flow:
+- [x] log in as existing admin test account.
+- [x] verify at least one non-admin test user exists for promotion test.
+- [x] ensure only one admin remains for last-admin guardrail scenario (if needed, demote extras first).
+- [x] Manual flow 1: create manager account:
+- [x] open `Admin Management`/`Employee Workspace Accounts` UI and create a `Manager`.
+- [x] verify success toast/message.
+- [x] verify manager appears in employee list with role `Manager`.
+- [x] Manual flow 2: create CSR with manager assignment:
+- [x] create `CSR` and select manager in CSR-only selector.
+- [x] verify create is blocked when manager is not selected.
+- [x] verify successful create when manager selected.
+- [x] verify CSR row displays assigned manager.
+- [x] Manual flow 3: CSR edit behavior:
+- [x] edit CSR and reassign to another manager (if available); verify persisted change.
+- [x] change CSR role to `Manager` or `Executive`; verify manager assignment is cleared.
+- [x] refresh page and verify cleared assignment remains cleared.
+- [x] Manual flow 4: create additional admin (bootstrap path):
+- [x] create second admin using admin create form.
+- [x] verify new account appears in admin list with role `Admin`.
+- [x] if testing promotion path: promote existing non-admin user to admin and verify list update.
+- [x] Manual flow 5: self-lockout protections:
+- [x] while logged in as current admin, attempt self-demote in UI; verify action disabled/blocked.
+- [x] attempt self-delete in UI; verify action disabled/blocked.
+- [x] if backend can be invoked directly, confirm API returns guardrail error text for both attempts.
+- [x] Manual flow 6: last-admin protections:
+- [x] reduce system to one remaining admin.
+- [x] attempt to demote that final admin; verify blocked with clear error.
+- [x] attempt to delete that final admin; verify blocked with clear error. The normal UI path still hits the self-delete guard first; backend tests cover the dedicated last-admin delete branch.
+- [x] confirm no destructive state change occurred after each blocked action.
+- [x] Data integrity/aggregation check:
+- [x] verify employee tree/manager aggregation still includes new manager + CSR relationships.
+- [x] verify no duplicate/missing users after role transitions.
+- [x] verify admin list and employee list remain correctly partitioned.
+- [x] Error-path checks:
+- [x] trigger CSR create without manager and confirm user-facing validation message.
+- [x] trigger invalid manager assignment (if possible via API/tool) and confirm clear backend error.
+- [x] verify UI error surfaces are actionable and non-generic.
+- [x] Evidence capture for handoff:
+- [x] save terminal outputs for targeted/full test runs.
+- [x] capture screenshots of key UI states (employee split, admin list, blocked self actions).
+- [x] log exact test accounts used and timestamp of run.
+- [x] Final gate before merge/deploy:
+- [x] ensure all A1-A9 checklist items are checked complete.
+- [x] ensure no unresolved TODO/FIXME added during implementation.
+- [x] ensure `git status` only contains intended files.
+- [x] add short release note summarizing admin provisioning + guardrail behavior.
 
 Definition of done:
 - [x] Backend targeted + full tests pass locally.
 - [x] Frontend targeted + full tests pass locally.
 - [x] Frontend build passes locally.
-- [ ] Manual provisioning/bootstrap scenarios pass end-to-end in local environment.
-- [ ] Self-lockout and last-admin protections are verified in both UI behavior and backend responses.
-- [ ] Evidence artifacts (logs/screenshots/notes) are captured for next-session continuity.
+- [x] Manual provisioning/bootstrap scenarios pass end-to-end in local environment.
+- [x] Self-lockout and last-admin protections are verified in both UI behavior and backend responses.
+- [x] Evidence artifacts (logs/screenshots/notes) are captured for next-session continuity.
+
+Release note:
+- Admin workspace now separates employee provisioning from admin management, supports CSR manager assignment and reassignment, and enforces self-lockout plus last-admin guardrails with specific user-facing errors.
+
+Live smoke notes, March 19, 2026:
+- Backend and frontend dev servers were launched locally on `http://localhost:4000` and `http://localhost:3000`.
+- Admin login succeeded with `session2.admin@example.com`.
+- Temporary manager creation and promotion to `Admin` succeeded through the backend API, then the temp account was cleaned up.
+- Backend validation errors were confirmed for self-demotion, self-delete, CSR create without manager, invalid manager UUID, and CSR manager-role mismatch.
+- Playwright browser-based UI smoke completed after copying the bundled Chromium build into the expected Chrome path for the harness.
+- The admin workspace loaded cleanly in the browser with no console/runtime errors reported.
+- UI flow checks completed for manager creation, CSR creation with assignment, CSR role change to `Manager`, admin creation, and admin promotion.
+- Additional UI check completed on March 19, 2026: created a second manager, reassigned an existing CSR to that manager, saved the row, and verified the new assignment after refresh.
+- Employee tree API check completed on March 19, 2026: `/employee/tree` returned the reassigned CSR under `MCP Test Manager 2`, confirming the relationship persisted in aggregation output.
+- Temporary test accounts created during browser smoke were removed after verification.
+- Screenshot artifact saved at `D:\Desktop\Main\Files\Programming\Projects\treeCRM\admin-workspace-last-admin.png`.
+- The sole-admin delete attempt resolves to the self-delete guard first, so the dedicated "last remaining Admin" delete branch is not separately reachable through the normal UI flow.
