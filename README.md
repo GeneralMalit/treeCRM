@@ -137,10 +137,11 @@ npm run test:e2e
 
 The session history documents the production rollout path and the live verification steps already completed.
 
-## Production Readiness Gaps (Tracked)
+## Admin Provisioning Status
 
-- Add admin-facing workspace account provisioning (create employee workspace accounts from admin surface).
-- Add admin bootstrap/management flow for creating additional admin users without manual backend intervention.
+- Employee workspace account provisioning is implemented in the admin workspace.
+- Additional admin creation and promotion flows are implemented with guardrails.
+- Supporting planning and validation notes live in `docs/admin_account_provisioning_plan.md` and `docs/admin_account_provisioning_evidence.md`.
 
 ## Semantic Versioning
 
@@ -162,5 +163,7 @@ Commit-message guidance for predictable bumps:
 
 ## Additional Docs
 
+- [docs/admin_account_provisioning_plan.md](docs/admin_account_provisioning_plan.md)
+- [docs/admin_account_provisioning_evidence.md](docs/admin_account_provisioning_evidence.md)
 - [docs/session_12_skill_tree_plan.md](docs/session_12_skill_tree_plan.md)
 - [docs/session_14_tree_view_ui_fixes_plan.md](docs/session_14_tree_view_ui_fixes_plan.md)
