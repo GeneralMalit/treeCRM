@@ -1,6 +1,5 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
-import { AppFooter } from "@/components/AppFooter";
 import { Providers } from "./providers";
 import "./globals.css";
 
@@ -32,7 +31,6 @@ export default function RootLayout({
         <Providers>
           <div className="app-shell">
             <main className="app-main">{children}</main>
-            <AppFooter />
           </div>
         </Providers>
       </body>

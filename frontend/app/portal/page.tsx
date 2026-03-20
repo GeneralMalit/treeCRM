@@ -1,34 +1,36 @@
 "use client";
 
 import { FormEvent, useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import {
   Alert,
-  Box,
   Button,
-  Chip,
-  Container,
-  Divider,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogTitle,
+  FormControl,
+  InputLabel,
   MenuItem,
   Paper,
+  Select,
   Stack,
+  Table,
+  TableBody,
+  TableCell,
+  TableContainer,
+  TableHead,
+  TableRow,
   TextField,
   Typography,
 } from "@mui/material";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
-import {
-  clearStoredAccessToken,
-  getLandingRoute,
-  getStoredAccessToken,
-  logout,
-  me,
-} from "@/lib/auth";
-import { disconnectRealtimeSocket } from "@/lib/realtime";
-import {
-  createPortalTicket,
-  fetchPortalTickets,
-  type PortalDashboardResponse,
-} from "@/lib/customerPortal";
+import { ShellEmptyState } from "@/components/shell/ShellEmptyState";
+import { ShellPageHeader } from "@/components/shell/ShellPageHeader";
+import { ShellSection } from "@/components/shell/ShellSection";
+import { ShellStatStrip } from "@/components/shell/ShellStatStrip";
+import { getLandingRoute, getStoredAccessToken, me } from "@/lib/auth";
+import { createPortalTicket, fetchPortalTickets, type PortalDashboardResponse } from "@/lib/customerPortal";
 import { safeFormatDate, sortTicketsByLatest } from "@/lib/portalPageUtils";
 
 const TICKET_CATEGORIES = [
@@ -55,17 +57,27 @@ type ViewState =
       };
     };
 
+type CreateTicketForm = {
+  subject: string;
+  description: string;
+  category: (typeof TICKET_CATEGORIES)[number];
+  attachments: string;
+};
+
+const EMPTY_FORM: CreateTicketForm = {
+  subject: "",
+  description: "",
+  category: "General Inquiry",
+  attachments: "",
+};
+
 export default function PortalPage() {
   const router = useRouter();
   const [state, setState] = useState<ViewState>({ status: "loading" });
-  const [subjectDraft, setSubjectDraft] = useState("");
-  const [descriptionDraft, setDescriptionDraft] = useState("");
-  const [categoryDraft, setCategoryDraft] = useState<(typeof TICKET_CATEGORIES)[number]>("General Inquiry");
-  const [attachmentsDraft, setAttachmentsDraft] = useState("");
+  const [createOpen, setCreateOpen] = useState(false);
+  const [formState, setFormState] = useState<CreateTicketForm>(EMPTY_FORM);
   const [creatingTicket, setCreatingTicket] = useState(false);
-  const [actionMessage, setActionMessage] = useState<{ type: "success" | "error"; text: string } | null>(
-    null,
-  );
+  const [actionMessage, setActionMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -123,17 +135,6 @@ export default function PortalPage() {
     };
   }, [router]);
 
-  const handleLogout = async () => {
-    const accessToken = getStoredAccessToken();
-    if (accessToken) {
-      await logout(accessToken).catch(() => undefined);
-    }
-
-    disconnectRealtimeSocket();
-    clearStoredAccessToken();
-    router.replace("/login");
-  };
-
   const handleRefreshTickets = async () => {
     if (state.status !== "ready") {
       return;
@@ -162,6 +163,11 @@ export default function PortalPage() {
     }
   };
 
+  const openCreateDialog = () => {
+    setFormState(EMPTY_FORM);
+    setCreateOpen(true);
+  };
+
   const handleCreateTicket = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
 
@@ -175,7 +181,7 @@ export default function PortalPage() {
       return;
     }
 
-    const attachments = attachmentsDraft
+    const attachments = formState.attachments
       .split(/\r?\n/)
       .map((line) => line.trim())
       .filter((line) => line.length > 0);
@@ -184,9 +190,9 @@ export default function PortalPage() {
     setActionMessage(null);
     try {
       const createdTicket = await createPortalTicket(accessToken, {
-        subject: subjectDraft,
-        description: descriptionDraft,
-        category: categoryDraft,
+        subject: formState.subject,
+        description: formState.description,
+        category: formState.category,
         attachments,
       });
 
@@ -199,10 +205,8 @@ export default function PortalPage() {
         },
       });
 
-      setSubjectDraft("");
-      setDescriptionDraft("");
-      setCategoryDraft("General Inquiry");
-      setAttachmentsDraft("");
+      setCreateOpen(false);
+      setFormState(EMPTY_FORM);
       setActionMessage({ type: "success", text: "Ticket created successfully." });
       router.push(`/portal/${createdTicket.id}`);
     } catch (error) {
@@ -223,167 +227,178 @@ export default function PortalPage() {
     return sortTicketsByLatest(state.data.dashboard.tickets);
   }, [state]);
 
+  const counts = useMemo(() => {
+    if (state.status !== "ready") {
+      return null;
+    }
+
+    return {
+      total: ticketList.length,
+      open: ticketList.filter((ticket) => ticket.status === "Open").length,
+      inProgress: ticketList.filter((ticket) => ticket.status === "In Progress").length,
+      resolved: ticketList.filter((ticket) => ticket.status === "Resolved").length,
+    };
+  }, [state, ticketList]);
+
   return (
-    <Container maxWidth="lg" sx={{ py: 4 }}>
-      <Stack spacing={2.5}>
-        <Paper elevation={1} sx={{ p: 3 }}>
-          <Stack spacing={1.25}>
-            <Typography variant="h5">Customer Portal</Typography>
-            <Typography color="text.secondary">
-              Submit support tickets, review progress, and continue your conversation with support.
-            </Typography>
+    <Stack spacing={3}>
+      <ShellPageHeader
+        title="Tickets"
+        description="Your ticket list stays in focus. Open any item to continue the conversation."
+        actions={
+          <>
+            <Button variant="outlined" onClick={() => void handleRefreshTickets()} disabled={state.status !== "ready"}>
+              Refresh
+            </Button>
+            <Button variant="contained" onClick={openCreateDialog} disabled={state.status !== "ready"}>
+              Create ticket
+            </Button>
+          </>
+        }
+      />
 
-            {state.status === "loading" && <Alert severity="info">Validating session and loading tickets...</Alert>}
-            {state.status === "error" && <Alert severity="error">{state.message}</Alert>}
-            {state.status === "ready" && (
-              <Alert severity="success">
-                Signed in as {state.data.user.name ? `${state.data.user.name} (${state.data.user.email})` : state.data.user.email}
-                {" - "}
-                company profile: {state.data.dashboard.customer.company}
-              </Alert>
-            )}
+      {state.status === "loading" ? <Alert severity="info">Validating session and loading tickets...</Alert> : null}
+      {state.status === "error" ? <Alert severity="error">{state.message}</Alert> : null}
+      {actionMessage ? <Alert severity={actionMessage.type}>{actionMessage.text}</Alert> : null}
 
-            <Stack direction="row" spacing={1.25}>
-              <Button variant="contained" onClick={handleLogout}>
-                Logout
-              </Button>
-              <Button variant="outlined" onClick={handleRefreshTickets} disabled={state.status !== "ready"}>
-                Refresh Tickets
-              </Button>
-              <Button component={Link} href="/" variant="outlined">
-                Home
-              </Button>
-            </Stack>
-          </Stack>
-        </Paper>
+      {counts ? (
+        <ShellStatStrip
+          items={[
+            { label: "Tickets", value: String(counts.total), detail: "All support requests" },
+            { label: "Open", value: String(counts.open), detail: "Waiting to be handled" },
+            { label: "In progress", value: String(counts.inProgress), detail: "Currently active" },
+            { label: "Resolved", value: String(counts.resolved), detail: "Completed conversations" },
+          ]}
+        />
+      ) : null}
 
-        <Stack direction={{ xs: "column", lg: "row" }} spacing={2}>
-          <Paper elevation={1} sx={{ p: 2.5, flex: 1 }}>
-            <Typography variant="h6">Submit a New Ticket</Typography>
-            <Typography variant="body2" color="text.secondary" sx={{ mb: 1.5 }}>
-              Include your issue details and optional attachment references.
-            </Typography>
-            <Divider sx={{ mb: 1.5 }} />
+      <ShellSection>
+        <Stack spacing={2}>
+          <Typography variant="h6" fontWeight={700}>
+            Your tickets
+          </Typography>
 
-            <Stack component="form" spacing={1.25} onSubmit={handleCreateTicket}>
-              <TextField
-                label="Subject"
-                value={subjectDraft}
-                onChange={(event) => setSubjectDraft(event.target.value)}
-                disabled={state.status !== "ready" || creatingTicket}
-                required
-              />
+          {state.status === "ready" && ticketList.length === 0 ? (
+            <ShellEmptyState
+              title="No tickets yet"
+              description="Create your first ticket to start a support conversation."
+              actionLabel="Create ticket"
+              onAction={openCreateDialog}
+            />
+          ) : null}
 
-              <TextField
-                select
+          {state.status === "ready" && ticketList.length > 0 ? (
+            <TableContainer component={Paper} variant="outlined" sx={{ boxShadow: "none" }}>
+              <Table size="small">
+                <TableHead>
+                  <TableRow>
+                    <TableCell>Subject</TableCell>
+                    <TableCell>Status</TableCell>
+                    <TableCell>Priority</TableCell>
+                    <TableCell>Category</TableCell>
+                    <TableCell>Updated</TableCell>
+                    <TableCell>Assigned employee</TableCell>
+                    <TableCell align="right">Action</TableCell>
+                  </TableRow>
+                </TableHead>
+                <TableBody>
+                  {ticketList.map((ticket) => (
+                    <TableRow key={ticket.id} hover>
+                      <TableCell>
+                        <Stack spacing={0.25}>
+                          <Typography variant="body2" fontWeight={600}>
+                            {ticket.subject}
+                          </Typography>
+                          <Typography variant="caption" color="text.secondary">
+                            {ticket.id}
+                          </Typography>
+                        </Stack>
+                      </TableCell>
+                      <TableCell>{ticket.status}</TableCell>
+                      <TableCell>{ticket.priority}</TableCell>
+                      <TableCell>{ticket.category}</TableCell>
+                      <TableCell>{safeFormatDate(ticket.updatedAt)}</TableCell>
+                      <TableCell>{ticket.assignedEmployee?.name || ticket.assignedEmployee?.email || "Pending"}</TableCell>
+                      <TableCell align="right">
+                        <Button component={Link} href={`/portal/${ticket.id}`} size="small" variant="outlined">
+                          Open
+                        </Button>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </TableContainer>
+          ) : null}
+        </Stack>
+      </ShellSection>
+
+      <Dialog open={createOpen} onClose={() => setCreateOpen(false)} fullWidth maxWidth="sm">
+        <DialogTitle>Create ticket</DialogTitle>
+        <DialogContent dividers>
+          <Stack
+            component="form"
+            id="create-ticket-form"
+            spacing={2}
+            sx={{ pt: 0.5 }}
+            onSubmit={handleCreateTicket}
+          >
+            <TextField
+              label="Subject"
+              value={formState.subject}
+              onChange={(event) => setFormState((current) => ({ ...current, subject: event.target.value }))}
+              required
+            />
+            <FormControl fullWidth>
+              <InputLabel id="ticket-category-label">Category</InputLabel>
+              <Select
+                labelId="ticket-category-label"
                 label="Category"
-                value={categoryDraft}
-                onChange={(event) => setCategoryDraft(event.target.value as (typeof TICKET_CATEGORIES)[number])}
-                disabled={state.status !== "ready" || creatingTicket}
+                value={formState.category}
+                onChange={(event) =>
+                  setFormState((current) => ({
+                    ...current,
+                    category: event.target.value as CreateTicketForm["category"],
+                  }))
+                }
               >
                 {TICKET_CATEGORIES.map((category) => (
                   <MenuItem key={category} value={category}>
                     {category}
                   </MenuItem>
                 ))}
-              </TextField>
-
-              <TextField
-                multiline
-                minRows={4}
-                label="Description"
-                value={descriptionDraft}
-                onChange={(event) => setDescriptionDraft(event.target.value)}
-                disabled={state.status !== "ready" || creatingTicket}
-                required
-              />
-
-              <TextField
-                multiline
-                minRows={3}
-                label="Attachments (one per line)"
-                value={attachmentsDraft}
-                onChange={(event) => setAttachmentsDraft(event.target.value)}
-                disabled={state.status !== "ready" || creatingTicket}
-                helperText="Enter file names or links. Upload handling is planned for a later session."
-              />
-
-              {actionMessage && <Alert severity={actionMessage.type}>{actionMessage.text}</Alert>}
-
-              <Button type="submit" variant="contained" disabled={state.status !== "ready" || creatingTicket}>
-                {creatingTicket ? "Creating..." : "Create Ticket"}
-              </Button>
-            </Stack>
-          </Paper>
-
-          <Paper elevation={1} sx={{ p: 2.5, flex: 1.2 }}>
-            <Typography variant="h6">Your Tickets</Typography>
-            <Typography variant="body2" color="text.secondary" sx={{ mb: 1.5 }}>
-              All tickets are sorted by most recent activity.
-            </Typography>
-            <Divider sx={{ mb: 1.5 }} />
-
-            {state.status === "ready" && ticketList.length === 0 && (
-              <Alert severity="info">No tickets yet. Create your first ticket using the form.</Alert>
-            )}
-
-            {state.status === "ready" && ticketList.length > 0 && (
-              <Stack spacing={1.25}>
-                {ticketList.map((ticket) => (
-                  <Paper
-                    key={ticket.id}
-                    variant="outlined"
-                    sx={{
-                      p: 1.25,
-                      borderColor: "#E5E7EB",
-                    }}
-                  >
-                    <Stack spacing={0.75}>
-                      <Stack
-                        direction={{ xs: "column", sm: "row" }}
-                        justifyContent="space-between"
-                        alignItems={{ xs: "flex-start", sm: "center" }}
-                        spacing={1}
-                      >
-                        <Typography sx={{ fontWeight: 600 }}>{ticket.subject}</Typography>
-                        <Stack direction="row" spacing={0.75}>
-                          <Chip size="small" label={ticket.status} />
-                          <Chip size="small" variant="outlined" label={ticket.priority} />
-                          <Chip size="small" variant="outlined" label={ticket.category} />
-                          {ticket.customerSatisfactionRating !== null && (
-                            <Chip
-                              size="small"
-                              color="success"
-                              variant="outlined"
-                              label={`CSAT ${ticket.customerSatisfactionRating}/5`}
-                            />
-                          )}
-                          {ticket.canSubmitCustomerSatisfaction && (
-                            <Chip size="small" color="warning" variant="outlined" label="Awaiting CSAT" />
-                          )}
-                        </Stack>
-                      </Stack>
-
-                      <Typography variant="caption" color="text.secondary">
-                        Updated: {safeFormatDate(ticket.updatedAt)}
-                      </Typography>
-                      <Typography variant="caption" color="text.secondary">
-                        Assigned: {ticket.assignedEmployee?.name || ticket.assignedEmployee?.email || "Pending assignment"}
-                      </Typography>
-
-                      <Box>
-                        <Button component={Link} href={`/portal/${ticket.id}`} size="small" variant="outlined">
-                          View Ticket
-                        </Button>
-                      </Box>
-                    </Stack>
-                  </Paper>
-                ))}
-              </Stack>
-            )}
-          </Paper>
-        </Stack>
-      </Stack>
-    </Container>
+              </Select>
+            </FormControl>
+            <TextField
+              multiline
+              minRows={4}
+              label="Description"
+              value={formState.description}
+              onChange={(event) => setFormState((current) => ({ ...current, description: event.target.value }))}
+              required
+            />
+            <TextField
+              multiline
+              minRows={3}
+              label="Attachments (one per line)"
+              value={formState.attachments}
+              onChange={(event) => setFormState((current) => ({ ...current, attachments: event.target.value }))}
+              helperText="Enter file names or links."
+            />
+          </Stack>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setCreateOpen(false)}>Cancel</Button>
+          <Button
+            type="submit"
+            form="create-ticket-form"
+            variant="contained"
+            disabled={creatingTicket || !formState.subject.trim() || !formState.description.trim()}
+          >
+            {creatingTicket ? "Creating..." : "Create ticket"}
+          </Button>
+        </DialogActions>
+      </Dialog>
+    </Stack>
   );
 }

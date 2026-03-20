@@ -20,7 +20,6 @@ import {
   TextField,
   Typography,
 } from "@mui/material";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { UnifiedTreeCanvas } from "@/components/graph/UnifiedTreeCanvas";
 import {
@@ -41,10 +40,8 @@ import {
   type EndorsementStatus,
 } from "@/lib/caseWorkflow";
 import {
-  clearStoredAccessToken,
   getLandingRoute,
   getStoredAccessToken,
-  logout,
   me,
 } from "@/lib/auth";
 import {
@@ -64,29 +61,19 @@ import {
   pickCaseNodeById,
   pickInitialSelectedNode,
   upsertCaseChatMessage,
-  upsertInternalMessage,
   upsertWorkflowEndorsement,
   type SelectedNode,
 } from "@/lib/employeeWorkspaceUtils";
 import {
   fetchEmployeeCaseMessages,
-  fetchInternalChatContacts,
-  fetchInternalChatMessages,
   postEmployeeCaseMessage,
-  postInternalChatMessage,
   type EmployeeCaseChatMessage,
-  type InternalChatContact,
-  type InternalChatMessage,
 } from "@/lib/employeeChat";
 import {
-  disconnectRealtimeSocket,
   getRealtimeSocket,
   joinCaseRoom,
-  joinInternalRoom,
   leaveCaseRoom,
-  leaveInternalRoom,
   type CaseChatSocketMessage,
-  type InternalChatSocketMessage,
   type NotificationSocketEvent,
   type RealtimeSocket,
 } from "@/lib/realtime";
@@ -238,7 +225,11 @@ function getEndorsementStatusChipColor(
   }
 }
 
-export function EmployeeTreeWorkspace({ allowedRoles, title, description }: EmployeeTreeWorkspaceProps) {
+export function EmployeeTreeWorkspace({
+  allowedRoles,
+  title,
+  description,
+}: EmployeeTreeWorkspaceProps) {
   const router = useRouter();
   const [state, setState] = useState<ViewState>({ status: "loading" });
   const [selectedNode, setSelectedNode] = useState<SelectedNode | null>(null);
@@ -264,15 +255,6 @@ export function EmployeeTreeWorkspace({ allowedRoles, title, description }: Empl
   const [caseChatDraft, setCaseChatDraft] = useState("");
   const [sendingCaseChat, setSendingCaseChat] = useState(false);
   const [caseChatFeedback, setCaseChatFeedback] = useState<ActionFeedback | null>(null);
-  const [internalChatContacts, setInternalChatContacts] = useState<InternalChatContact[]>([]);
-  const [selectedInternalChatContactId, setSelectedInternalChatContactId] = useState("");
-  const [internalChatMessages, setInternalChatMessages] = useState<InternalChatMessage[]>([]);
-  const [internalChatLoading, setInternalChatLoading] = useState(false);
-  const [internalChatError, setInternalChatError] = useState<string | null>(null);
-  const [internalChatDraft, setInternalChatDraft] = useState("");
-  const [sendingInternalChat, setSendingInternalChat] = useState(false);
-  const [internalChatFeedback, setInternalChatFeedback] = useState<ActionFeedback | null>(null);
-  const [notificationFeed, setNotificationFeed] = useState<NotificationSocketEvent[]>([]);
   const [workflowCaseId, setWorkflowCaseId] = useState<string | null>(null);
   const [workflowLoading, setWorkflowLoading] = useState(false);
   const [workflowError, setWorkflowError] = useState<string | null>(null);
@@ -305,10 +287,6 @@ export function EmployeeTreeWorkspace({ allowedRoles, title, description }: Empl
     state.status === "ready"
       ? (state.data.user.name?.trim() || state.data.user.email)
       : null;
-  const selectedInternalContact = useMemo(
-    () => internalChatContacts.find((contact) => contact.id === selectedInternalChatContactId) ?? null,
-    [internalChatContacts, selectedInternalChatContactId],
-  );
   const unifiedSelectedNodeId = useMemo(() => {
     if (!selectedNode) return null;
     if (selectedNode.kind === "employee") return selectedNode.employee.id;
@@ -642,103 +620,6 @@ export function EmployeeTreeWorkspace({ allowedRoles, title, description }: Empl
   }, [isCsrSession, selectedCaseId, router]);
 
   useEffect(() => {
-    if (!isEmployeeSession) {
-      setInternalChatContacts([]);
-      setSelectedInternalChatContactId("");
-      setInternalChatMessages([]);
-      setInternalChatLoading(false);
-      setInternalChatError(null);
-      setInternalChatDraft("");
-      setInternalChatFeedback(null);
-      return;
-    }
-
-    const accessToken = getStoredAccessToken();
-    if (!accessToken) {
-      router.replace("/login");
-      return;
-    }
-
-    let cancelled = false;
-    setInternalChatError(null);
-    setInternalChatFeedback(null);
-
-    fetchInternalChatContacts(accessToken)
-      .then((contacts) => {
-        if (cancelled) {
-          return;
-        }
-
-        setInternalChatContacts(contacts);
-        setSelectedInternalChatContactId((current) => {
-          if (current && contacts.some((contact) => contact.id === current)) {
-            return current;
-          }
-
-          return contacts[0]?.id ?? "";
-        });
-      })
-      .catch((error) => {
-        if (cancelled) {
-          return;
-        }
-
-        setInternalChatError(error instanceof Error ? error.message : "Failed to load internal chat contacts.");
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [isEmployeeSession, router]);
-
-  useEffect(() => {
-    if (!isEmployeeSession || !selectedInternalChatContactId) {
-      setInternalChatMessages([]);
-      setInternalChatLoading(false);
-      setInternalChatError(null);
-      setInternalChatDraft("");
-      setInternalChatFeedback(null);
-      return;
-    }
-
-    const accessToken = getStoredAccessToken();
-    if (!accessToken) {
-      router.replace("/login");
-      return;
-    }
-
-    let cancelled = false;
-    setInternalChatLoading(true);
-    setInternalChatError(null);
-    setInternalChatFeedback(null);
-
-    fetchInternalChatMessages(accessToken, selectedInternalChatContactId)
-      .then((thread) => {
-        if (cancelled) {
-          return;
-        }
-
-        setInternalChatMessages(thread.messages);
-      })
-      .catch((error) => {
-        if (cancelled) {
-          return;
-        }
-
-        setInternalChatError(error instanceof Error ? error.message : "Failed to load internal chat messages.");
-      })
-      .finally(() => {
-        if (!cancelled) {
-          setInternalChatLoading(false);
-        }
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [isEmployeeSession, selectedInternalChatContactId, router]);
-
-  useEffect(() => {
     if (!isEmployeeSession || !viewerId || !viewerDisplayName) {
       return;
     }
@@ -758,13 +639,6 @@ export function EmployeeTreeWorkspace({ allowedRoles, title, description }: Empl
         });
       }
 
-      if (selectedInternalChatContactId) {
-        void joinInternalRoom(socket, selectedInternalChatContactId).catch((error) => {
-          setInternalChatError(
-            error instanceof Error ? error.message : "Failed to join internal chat room.",
-          );
-        });
-      }
     };
 
     const handleCaseMessage = (payload: CaseChatSocketMessage) => {
@@ -787,34 +661,7 @@ export function EmployeeTreeWorkspace({ allowedRoles, title, description }: Empl
       setCaseChatMessages((current) => upsertCaseChatMessage(current, mappedMessage));
     };
 
-    const handleInternalMessage = (payload: InternalChatSocketMessage) => {
-      const isFromCurrentPeer =
-        (payload.senderId === selectedInternalChatContactId && payload.recipientId === viewerId) ||
-        (payload.senderId === viewerId && payload.recipientId === selectedInternalChatContactId);
-
-      if (!isFromCurrentPeer) {
-        return;
-      }
-
-      const mappedMessage: InternalChatMessage = {
-        id: payload.id,
-        senderId: payload.senderId,
-        senderRole: payload.senderRole,
-        senderName: payload.senderId === viewerId ? "You" : payload.senderName,
-        recipientId: payload.recipientId,
-        recipientRole: payload.recipientRole,
-        recipientName: payload.recipientId === viewerId ? viewerDisplayName : payload.recipientName,
-        messageText: payload.messageText,
-        createdAt: payload.createdAt,
-        isSelf: payload.senderId === viewerId,
-      };
-
-      setInternalChatMessages((current) => upsertInternalMessage(current, mappedMessage));
-    };
-
     const handleNotification = (payload: NotificationSocketEvent) => {
-      setNotificationFeed((current) => [payload, ...current].slice(0, 6));
-
       if (
         payload.type !== "case_endorsement" &&
         payload.type !== "case_endorsement_decision" &&
@@ -847,7 +694,6 @@ export function EmployeeTreeWorkspace({ allowedRoles, title, description }: Empl
 
     socket.on("connect", handleConnect);
     socket.on("chat:case:message", handleCaseMessage);
-    socket.on("chat:internal:message", handleInternalMessage);
     socket.on("notification:new", handleNotification);
 
     if (socket.connected) {
@@ -857,14 +703,12 @@ export function EmployeeTreeWorkspace({ allowedRoles, title, description }: Empl
     return () => {
       socket.off("connect", handleConnect);
       socket.off("chat:case:message", handleCaseMessage);
-      socket.off("chat:internal:message", handleInternalMessage);
       socket.off("notification:new", handleNotification);
     };
   }, [
     isCsrSession,
     isEmployeeSession,
     selectedCaseId,
-    selectedInternalChatContactId,
     viewerDisplayName,
     viewerId,
     refreshCaseWorkflow,
@@ -885,40 +729,6 @@ export function EmployeeTreeWorkspace({ allowedRoles, title, description }: Empl
       void leaveCaseRoom(socket, selectedCaseId).catch(() => undefined);
     };
   }, [isCsrSession, selectedCaseId]);
-
-  useEffect(() => {
-    const socket = socketRef.current;
-    if (!socket || !isEmployeeSession || !selectedInternalChatContactId) {
-      return;
-    }
-
-    void joinInternalRoom(socket, selectedInternalChatContactId).catch((error) => {
-      setInternalChatError(error instanceof Error ? error.message : "Failed to join internal chat room.");
-    });
-
-    return () => {
-      void leaveInternalRoom(socket, selectedInternalChatContactId).catch(() => undefined);
-    };
-  }, [isEmployeeSession, selectedInternalChatContactId]);
-
-  const handleLogout = async () => {
-    const accessToken = getStoredAccessToken();
-    if (accessToken) {
-      await logout(accessToken).catch(() => undefined);
-    }
-
-    disconnectRealtimeSocket();
-    clearStoredAccessToken();
-    router.replace("/login");
-  };
-
-  const summary = useMemo(() => {
-    if (state.status !== "ready") {
-      return null;
-    }
-
-    return state.data.tree.scope;
-  }, [state]);
 
   const handleSaveCaseFields = async () => {
     if (state.status !== "ready" || state.data.user.role !== "CSR" || !selectedCaseId) {
@@ -1295,52 +1105,10 @@ export function EmployeeTreeWorkspace({ allowedRoles, title, description }: Empl
     }
   };
 
-  const handleSendInternalMessage = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-
-    if (state.status !== "ready" || !selectedInternalChatContactId) {
-      return;
-    }
-
-    const trimmedMessage = internalChatDraft.trim();
-    if (!trimmedMessage) {
-      setInternalChatFeedback({ type: "error", message: "Message cannot be empty." });
-      return;
-    }
-
-    const accessToken = getStoredAccessToken();
-    if (!accessToken) {
-      router.replace("/login");
-      return;
-    }
-
-    setSendingInternalChat(true);
-    setInternalChatFeedback(null);
-    try {
-      const createdMessage = await postInternalChatMessage(
-        accessToken,
-        selectedInternalChatContactId,
-        trimmedMessage,
-      );
-      setInternalChatMessages((current) => upsertInternalMessage(current, createdMessage));
-      setInternalChatDraft("");
-      setInternalChatFeedback({ type: "success", message: "Internal message sent." });
-    } catch (error) {
-      setInternalChatFeedback({
-        type: "error",
-        message: error instanceof Error ? error.message : "Failed to send internal message.",
-      });
-    } finally {
-      setSendingInternalChat(false);
-    }
-  };
-
   const renderDetailPane = () => {
     if (state.status !== "ready") {
       return (
-        <Typography variant="body2" color="text.secondary">
-          Select a node to see details.
-        </Typography>
+        <Typography variant="body2" color="text.secondary">Select a node to see details.</Typography>
       );
     }
 
@@ -1355,8 +1123,10 @@ export function EmployeeTreeWorkspace({ allowedRoles, title, description }: Empl
     if (selectedNode.kind === "employee") {
       const caseCount = selectedNode.employee.customers.reduce((total, customer) => total + customer.cases.length, 0);
       const selectedEmployeeTeamMetrics =
-        summary?.teamMetrics && selectedNode.employee.id === summary.teamMetrics.managerId
-          ? summary.teamMetrics
+        state.status === "ready" &&
+        state.data.tree.scope.teamMetrics &&
+        selectedNode.employee.id === state.data.tree.scope.teamMetrics.managerId
+          ? state.data.tree.scope.teamMetrics
           : null;
 
       return (
@@ -1978,101 +1748,29 @@ export function EmployeeTreeWorkspace({ allowedRoles, title, description }: Empl
 
   return (
     <Container maxWidth="xl" sx={{ py: 4 }}>
-      <Stack spacing={2.5}>
-        <Paper elevation={1} sx={{ p: 3 }}>
-          <Stack spacing={1.25}>
-            <Typography variant="h5">{title}</Typography>
+      <Stack spacing={3}>
+        <Box sx={{ display: "flex", flexDirection: { xs: "column", md: "row" }, justifyContent: "space-between", alignItems: { xs: "flex-start", md: "flex-end" }, gap: 2 }}>
+          <Box>
+            <Typography variant="h4" fontWeight={800} sx={{ color: "#0f172a", mb: 0.5 }}>
+              {title}
+            </Typography>
             <Typography color="text.secondary">{description}</Typography>
 
-            {state.status === "loading" && <Alert severity="info">Validating session and loading tree...</Alert>}
-            {state.status === "error" && <Alert severity="error">{state.message}</Alert>}
+            {state.status === "loading" && <Alert severity="info" sx={{ mt: 2 }}>Validating session and loading tree...</Alert>}
+            {state.status === "error" && <Alert severity="error" sx={{ mt: 2 }}>{state.message}</Alert>}
             {state.status === "ready" && (
-              <Alert severity="success">
+              <Typography variant="body2" sx={{ mt: 1, color: "#475569", fontWeight: 500 }}>
                 Signed in as {state.data.user.name ? `${state.data.user.name} (${state.data.user.email})` : state.data.user.email}
-                {" - "}
-                role: {state.data.user.role}
-              </Alert>
+                {" • "}Role: {state.data.user.role}
+              </Typography>
             )}
+          </Box>
 
-            {summary && (
-              <Stack spacing={1}>
-                <Stack direction={{ xs: "column", sm: "row" }} spacing={1}>
-                  <Chip size="small" label={`Employees: ${summary.employeeCount}`} />
-                  <Chip size="small" label={`Customers: ${summary.customerCount}`} />
-                  <Chip size="small" label={`Cases: ${summary.caseCount}`} />
-                </Stack>
+        </Box>
 
-                <Stack direction={{ xs: "column", sm: "row" }} spacing={1}>
-                  <Chip size="small" color="primary" label={`Ongoing: ${summary.metrics.ongoingCases}`} />
-                  <Chip size="small" color="success" label={`Resolved Today: ${summary.metrics.resolvedToday}`} />
-                  <Chip
-                    size="small"
-                    color="info"
-                    label={`CSAT: ${formatCustomerSatisfaction(summary.metrics.customerSatisfaction)}`}
-                  />
-                </Stack>
-
-                {summary.teamMetrics && (
-                  <Alert severity="info">
-                    Team Metrics ({formatAllocationModeLabel(summary.teamMetrics.allocationMode)}):{" "}
-                    {renderMetricsSummary(summary.teamMetrics.metrics)} | CSRs {summary.teamMetrics.csrCount}
-                  </Alert>
-                )}
-
-                {summary.managerAggregates && (
-                  <Stack spacing={0.75}>
-                    <Alert severity="warning">
-                      Executive Manager Rollup ({formatAllocationModeLabel(summary.managerAggregates.allocationMode)}
-                      ): {renderMetricsSummary(summary.managerAggregates.metrics)} | Managers{" "}
-                      {summary.managerAggregates.managerCount} | CSRs {summary.managerAggregates.csrCount} | Unassigned{" "}
-                      {summary.managerAggregates.unassignedCsrCount}
-                    </Alert>
-                    {summary.managerAggregates.managers.length > 0 && (
-                      <Stack spacing={0.5}>
-                        {summary.managerAggregates.managers.map((managerAggregate) => (
-                          <Box
-                            key={managerAggregate.managerId}
-                            sx={{
-                              p: 1,
-                              borderRadius: 1,
-                              border: "1px solid #E5E7EB",
-                              backgroundColor: "#F9FAFB",
-                            }}
-                          >
-                            <Typography variant="caption" color="text.secondary">
-                              {managerAggregate.managerName || managerAggregate.managerEmail} | CSRs{" "}
-                              {managerAggregate.csrCount}
-                            </Typography>
-                            <Typography variant="body2">
-                              {renderMetricsSummary(managerAggregate.metrics)}
-                            </Typography>
-                          </Box>
-                        ))}
-                      </Stack>
-                    )}
-                    {summary.managerAggregates.unassignedCsrCount > 0 && (
-                      <Typography variant="caption" color="text.secondary">
-                        Unassigned CSR Pool: {renderMetricsSummary(summary.managerAggregates.unassignedMetrics)}
-                      </Typography>
-                    )}
-                  </Stack>
-                )}
-              </Stack>
-            )}
-
-            <Stack direction="row" spacing={1.5}>
-              <Button variant="contained" onClick={handleLogout}>
-                Logout
-              </Button>
-              <Button component={Link} href="/" variant="outlined">
-                Home
-              </Button>
-            </Stack>
-          </Stack>
-        </Paper>
-
-        <Stack direction={{ xs: "column", lg: "row" }} spacing={2}>
-          <Paper elevation={1} sx={{ p: 2, flex: 1.3 }}>
+        <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", lg: "1.4fr 1fr" }, gap: 3 }}>
+          <Stack spacing={3}>
+            <Paper variant="outlined" sx={{ p: 4, borderRadius: 3, borderColor: "rgba(15, 23, 42, 0.08)", boxShadow: "0 1px 3px rgba(15, 23, 42, 0.02)" }}>
             {state.status === "loading" && <Typography color="text.secondary">Loading tree data...</Typography>}
 
             {state.status === "ready" && state.data.tree.data.length === 0 && (
@@ -2092,10 +1790,11 @@ export function EmployeeTreeWorkspace({ allowedRoles, title, description }: Empl
                 onSelectCase={handleSelectCaseNode}
               />
             )}
-          </Paper>
+            </Paper>
+          </Stack>
 
-          <Stack spacing={2} sx={{ flex: 1 }}>
-            <Paper elevation={1} sx={{ p: 2 }}>
+          <Stack spacing={3}>
+            <Paper variant="outlined" sx={{ p: 4, borderRadius: 3, borderColor: "rgba(15, 23, 42, 0.08)", boxShadow: "0 1px 3px rgba(15, 23, 42, 0.02)" }}>
               <Typography variant="h6">Details Panel</Typography>
               <Typography variant="body2" color="text.secondary" sx={{ mb: 1.5 }}>
                 Click any graph node to inspect details.
@@ -2104,148 +1803,8 @@ export function EmployeeTreeWorkspace({ allowedRoles, title, description }: Empl
               {renderDetailPane()}
             </Paper>
 
-            {isEmployeeSession && (
-              <Paper elevation={1} sx={{ p: 2 }}>
-                <Typography variant="h6">Internal Employee Chat</Typography>
-                <Typography variant="body2" color="text.secondary" sx={{ mb: 1.5 }}>
-                  Real-time direct chat with managers, executives, and CSRs based on role access.
-                </Typography>
-                <Divider sx={{ mb: 1.5 }} />
-
-                {internalChatContacts.length === 0 && !internalChatError && (
-                  <Alert severity="info" sx={{ mb: 1.25 }}>
-                    No internal chat contacts are currently available in your scope.
-                  </Alert>
-                )}
-
-                {internalChatError && (
-                  <Alert severity="error" sx={{ mb: 1.25 }}>
-                    {internalChatError}
-                  </Alert>
-                )}
-
-                {notificationFeed.length > 0 && (
-                  <Stack spacing={0.75} sx={{ mb: 1.25 }}>
-                    <Typography variant="subtitle2">Latest Notifications</Typography>
-                    {notificationFeed.map((notification) => (
-                      <Box
-                        key={notification.id}
-                        sx={{
-                          p: 1,
-                          borderRadius: 1,
-                          border: "1px solid #E5E7EB",
-                          backgroundColor: "#FFFBEB",
-                        }}
-                      >
-                        <Typography variant="caption" color="text.secondary">
-                          {notification.type} | {safeFormatDate(notification.createdAt)}
-                        </Typography>
-                        <Typography variant="body2">{notification.message}</Typography>
-                      </Box>
-                    ))}
-                  </Stack>
-                )}
-
-                <Stack spacing={1.25}>
-                  <FormControl fullWidth size="small" disabled={internalChatContacts.length === 0}>
-                    <InputLabel id="internal-chat-contact-select-label">Chat Contact</InputLabel>
-                    <Select
-                      labelId="internal-chat-contact-select-label"
-                      label="Chat Contact"
-                      value={selectedInternalChatContactId}
-                      onChange={(event) => setSelectedInternalChatContactId(event.target.value)}
-                    >
-                      {internalChatContacts.map((contact) => (
-                        <MenuItem key={contact.id} value={contact.id}>
-                          {contact.name || contact.email} ({contact.role})
-                        </MenuItem>
-                      ))}
-                    </Select>
-                  </FormControl>
-
-                  {selectedInternalContact && (
-                    <Typography variant="caption" color="text.secondary">
-                      Chatting with {selectedInternalContact.name || selectedInternalContact.email} (
-                      {selectedInternalContact.role})
-                    </Typography>
-                  )}
-
-                  {internalChatLoading && (
-                    <Stack direction="row" spacing={1} alignItems="center">
-                      <CircularProgress size={18} />
-                      <Typography variant="body2" color="text.secondary">
-                        Loading internal messages...
-                      </Typography>
-                    </Stack>
-                  )}
-
-                  <Stack
-                    spacing={1}
-                    sx={{
-                      maxHeight: 220,
-                      overflowY: "auto",
-                      border: "1px solid #E5E7EB",
-                      borderRadius: 1,
-                      p: 1,
-                      backgroundColor: "#F9FAFB",
-                    }}
-                  >
-                    {internalChatMessages.length === 0 && !internalChatLoading && (
-                      <Typography variant="body2" color="text.secondary">
-                        No internal messages in this conversation yet.
-                      </Typography>
-                    )}
-
-                    {internalChatMessages.map((message) => (
-                      <Box
-                        key={message.id}
-                        sx={{
-                          alignSelf: message.isSelf ? "flex-end" : "flex-start",
-                          maxWidth: "88%",
-                          p: 1.1,
-                          borderRadius: 1,
-                          border: "1px solid #E5E7EB",
-                          backgroundColor: message.isSelf ? "#E0F2FE" : "#F3F4F6",
-                        }}
-                      >
-                        <Typography variant="caption" color="text.secondary">
-                          {message.senderName} ({message.senderRole}) | {safeFormatDate(message.createdAt)}
-                        </Typography>
-                        <Typography variant="body2">{message.messageText}</Typography>
-                      </Box>
-                    ))}
-                  </Stack>
-
-                  {internalChatFeedback && (
-                    <Alert severity={internalChatFeedback.type}>{internalChatFeedback.message}</Alert>
-                  )}
-
-                  <Stack component="form" spacing={1} onSubmit={handleSendInternalMessage}>
-                    <TextField
-                      multiline
-                      minRows={2}
-                      label="Internal Message"
-                      value={internalChatDraft}
-                      onChange={(event) => setInternalChatDraft(event.target.value)}
-                      disabled={
-                        sendingInternalChat || internalChatLoading || !selectedInternalChatContactId
-                      }
-                    />
-                    <Button
-                      type="submit"
-                      variant="contained"
-                      disabled={
-                        sendingInternalChat || internalChatLoading || !selectedInternalChatContactId
-                      }
-                    >
-                      {sendingInternalChat ? "Sending..." : "Send Internal Message"}
-                    </Button>
-                  </Stack>
-                </Stack>
-              </Paper>
-            )}
           </Stack>
-        </Stack>
+        </Box>
       </Stack>
     </Container>
   );

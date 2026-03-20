@@ -1,11 +1,5 @@
-import { EmployeeTreeWorkspace } from "@/components/EmployeeTreeWorkspace";
+import { redirect } from "next/navigation";
 
-export default function EmployeeManagerPage() {
-  return (
-    <EmployeeTreeWorkspace
-      allowedRoles={["Manager"]}
-      title="Manager Tree Workspace"
-      description="Inspect employee workloads and drill into customer cases from the hierarchy."
-    />
-  );
+export default function ManagerRootPage() {
+  redirect("/employee/manager/overview");
 }

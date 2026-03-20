@@ -1,11 +1,5 @@
-import { EmployeeTreeWorkspace } from "@/components/EmployeeTreeWorkspace";
+import { redirect } from "next/navigation";
 
-export default function EmployeeExecutivePage() {
-  return (
-    <EmployeeTreeWorkspace
-      allowedRoles={["Executive"]}
-      title="Executive Tree Workspace"
-      description="View the organization hierarchy and monitor active case distribution."
-    />
-  );
+export default function ExecutiveRootPage() {
+  redirect("/employee/executive/overview");
 }

@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import PortalPage from "@/app/portal/page";
 
@@ -89,16 +89,21 @@ describe("PortalPage", () => {
     });
     expect(screen.getAllByText(/Newer|Older/).map((node) => node.textContent)).toEqual(["Newer", "Older"]);
 
-    fireEvent.change(screen.getByRole("textbox", { name: /subject/i }), {
+    fireEvent.click(screen.getByRole("button", { name: "Create ticket" }));
+
+    const dialog = await screen.findByRole("dialog");
+    const dialogScope = within(dialog);
+
+    fireEvent.change(dialogScope.getByRole("textbox", { name: /subject/i }), {
       target: { value: "Created ticket" },
     });
-    fireEvent.change(screen.getByRole("textbox", { name: /description/i }), {
+    fireEvent.change(dialogScope.getByRole("textbox", { name: /description/i }), {
       target: { value: "Need help" },
     });
-    fireEvent.change(screen.getByRole("textbox", { name: /attachments \(one per line\)/i }), {
+    fireEvent.change(dialogScope.getByRole("textbox", { name: /attachments \(one per line\)/i }), {
       target: { value: "first.txt\nsecond.txt" },
     });
-    fireEvent.click(screen.getByRole("button", { name: "Create Ticket" }));
+    fireEvent.click(dialogScope.getByRole("button", { name: "Create ticket" }));
 
     await waitFor(() => {
       expect(createPortalTicket).toHaveBeenCalledWith("token-1", expect.objectContaining({

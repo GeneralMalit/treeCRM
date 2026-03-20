@@ -1,5 +1,4 @@
 import { expect, test } from "@playwright/test";
-import { APP_FOOTER_TEXT } from "../../lib/appMeta";
 
 const API_BASE_URL = "http://127.0.0.1:4000";
 
@@ -108,12 +107,33 @@ test("csr workspace loads tree data and case details", async ({ page }) => {
           data: {
             case: {
               id: "case-1",
+              customerId: "customer-1",
+              assignedTo: "csr-1",
               title: "Internet issue",
+              description: "Need help",
               status: "Open",
               priority: "High",
+              createdAt: "2026-03-08T00:00:00.000Z",
+              updatedAt: "2026-03-08T01:00:00.000Z",
             },
-            tags: [],
-            internalNotes: [],
+            tags: [
+              {
+                id: "tag-1",
+                name: "VIP",
+                color: "#10b981",
+                affectsNodeColor: true,
+                selected: false,
+              },
+            ],
+            internalNotes: [
+              {
+                id: "note-1",
+                senderId: "csr-1",
+                senderRole: "CSR",
+                messageText: "Case opened for follow-up.",
+                createdAt: "2026-03-08T01:15:00.000Z",
+              },
+            ],
           },
         }),
       });
@@ -129,11 +149,60 @@ test("csr workspace loads tree data and case details", async ({ page }) => {
           data: {
             case: {
               id: "case-1",
+              customerId: "customer-1",
               assignedTo: "csr-1",
+              title: "Internet issue",
+              description: "Need help",
+              status: "Open",
+              priority: "High",
+              createdAt: "2026-03-08T00:00:00.000Z",
+              updatedAt: "2026-03-08T01:00:00.000Z",
+              hasPendingEndorsement: true,
+              pendingEndorsementCount: 1,
+              assignedToUser: {
+                id: "csr-1",
+                name: "CSR One",
+                email: "csr@example.com",
+                role: "CSR",
+              },
             },
-            endorsements: [],
-            endorsementTargets: [],
-            reassignmentCandidates: [],
+            endorsements: [
+              {
+                id: "endorsement-1",
+                caseId: "case-1",
+                status: "Pending",
+                createdAt: "2026-03-08T01:10:00.000Z",
+                endorsedBy: {
+                  id: "csr-1",
+                  name: "CSR One",
+                  email: "csr@example.com",
+                  role: "CSR",
+                },
+                endorsedTo: {
+                  id: "manager-1",
+                  name: "Manager One",
+                  email: "manager@example.com",
+                  role: "Manager",
+                },
+                isPendingForViewer: true,
+              },
+            ],
+            endorsementTargets: [
+              {
+                id: "manager-1",
+                name: "Manager One",
+                email: "manager@example.com",
+                role: "Manager",
+              },
+            ],
+            reassignmentCandidates: [
+              {
+                id: "csr-1",
+                name: "CSR One",
+                email: "csr@example.com",
+                role: "CSR",
+              },
+            ],
           },
         }),
       });
@@ -176,8 +245,9 @@ test("csr workspace loads tree data and case details", async ({ page }) => {
   });
 
   await page.goto("/employee/csr");
-  await expect(page.getByText("CSR Tree Workspace")).toBeVisible();
+  await expect(page.getByText("CSR Workspace")).toBeVisible();
   await expect(page.getByText("Customer Name: Acme Corp")).toBeVisible();
   await expect(page.getByText("Case Reference: Internet issue")).toBeVisible();
-  await expect(page.getByText(APP_FOOTER_TEXT)).toBeVisible();
+  await expect(page.getByRole("button", { name: "Logout" })).toBeVisible();
+  await expect(page.getByText("/employee/csr")).toHaveCount(0);
 });

@@ -1,11 +1,5 @@
-import { EmployeeTreeWorkspace } from "@/components/EmployeeTreeWorkspace";
+import { redirect } from "next/navigation";
 
-export default function EmployeeCsrPage() {
-  return (
-    <EmployeeTreeWorkspace
-      allowedRoles={["CSR"]}
-      title="CSR Tree Workspace"
-      description="Manage assigned customers and cases through the employee tree."
-    />
-  );
+export default function CsrRootPage() {
+  redirect("/employee/csr/workspace");
 }

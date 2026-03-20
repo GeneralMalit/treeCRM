@@ -6,7 +6,6 @@ import {
   Box,
   Button,
   Chip,
-  Container,
   Divider,
   FormControl,
   InputLabel,
@@ -19,13 +18,7 @@ import {
 } from "@mui/material";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
-import {
-  clearStoredAccessToken,
-  getLandingRoute,
-  getStoredAccessToken,
-  logout,
-  me,
-} from "@/lib/auth";
+import { getLandingRoute, getStoredAccessToken, me } from "@/lib/auth";
 import {
   fetchPortalTicketDetail,
   postPortalTicketMessage,
@@ -34,13 +27,14 @@ import {
   type PortalTicketDetailResponse,
 } from "@/lib/customerPortal";
 import {
-  disconnectRealtimeSocket,
   getRealtimeSocket,
   joinCaseRoom,
   leaveCaseRoom,
   type CaseChatSocketMessage,
   type RealtimeSocket,
 } from "@/lib/realtime";
+import { ShellPageHeader } from "@/components/shell/ShellPageHeader";
+import { ShellSection } from "@/components/shell/ShellSection";
 
 type ViewState =
   | { status: "loading" }
@@ -245,17 +239,6 @@ export default function PortalTicketDetailPage() {
     setRatingDraft(currentTicketRating ?? 5);
   }, [currentTicketRating, state.status]);
 
-  const handleLogout = async () => {
-    const accessToken = getStoredAccessToken();
-    if (accessToken) {
-      await logout(accessToken).catch(() => undefined);
-    }
-
-    disconnectRealtimeSocket();
-    clearStoredAccessToken();
-    router.replace("/login");
-  };
-
   const handleSendMessage = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
 
@@ -363,187 +346,61 @@ export default function PortalTicketDetailPage() {
   }, [state]);
 
   return (
-    <Container maxWidth="lg" sx={{ py: 4 }}>
-      <Stack spacing={2.5}>
-        <Paper elevation={1} sx={{ p: 3 }}>
-          <Stack spacing={1.25}>
-            <Typography variant="h5">Ticket Detail</Typography>
-            <Typography color="text.secondary">
-              Review ticket status and timeline, then continue the conversation with support.
-            </Typography>
+    <Stack spacing={3}>
+      <ShellPageHeader
+        title={state.status === "ready" ? state.data.detail.ticket.subject : "Ticket detail"}
+        description="Conversation stays primary. Status, timeline, and support metadata live in the side panel."
+        actions={
+          <Button component={Link} href="/portal" variant="outlined" size="small">
+            Back to tickets
+          </Button>
+        }
+      />
 
-            {state.status === "loading" && <Alert severity="info">Loading ticket details...</Alert>}
-            {state.status === "error" && <Alert severity="error">{state.message}</Alert>}
-            {state.status === "ready" && (
-              <Alert severity="success">
-                Signed in as {state.data.user.name ? `${state.data.user.name} (${state.data.user.email})` : state.data.user.email}
-              </Alert>
-            )}
+      {state.status === "loading" ? <Alert severity="info">Loading ticket details...</Alert> : null}
+      {state.status === "error" ? <Alert severity="error">{state.message}</Alert> : null}
+      {state.status === "ready" ? (
+        <Typography variant="body2" color="text.secondary">
+          Signed in as {state.data.user.name ? `${state.data.user.name} (${state.data.user.email})` : state.data.user.email}
+        </Typography>
+      ) : null}
+      {actionMessage ? <Alert severity={actionMessage.type}>{actionMessage.text}</Alert> : null}
 
-            <Stack direction="row" spacing={1.25}>
-              <Button component={Link} href="/portal" variant="contained">
-                Back to Tickets
-              </Button>
-              <Button component={Link} href="/" variant="outlined">
-                Home
-              </Button>
-              <Button variant="outlined" onClick={handleLogout}>
-                Logout
-              </Button>
-            </Stack>
-          </Stack>
-        </Paper>
-
-        {state.status === "ready" && (
-          <Stack direction={{ xs: "column", lg: "row" }} spacing={2}>
-            <Paper elevation={1} sx={{ p: 2.5, flex: 1 }}>
-              <Stack spacing={1.25}>
-                <Typography variant="h6">{state.data.detail.ticket.subject}</Typography>
-                <Stack direction="row" spacing={0.75} useFlexGap flexWrap="wrap">
-                  <Chip label={`Status: ${state.data.detail.ticket.status}`} />
-                  <Chip label={`Priority: ${state.data.detail.ticket.priority}`} variant="outlined" />
-                  <Chip label={`Category: ${state.data.detail.ticket.category}`} variant="outlined" />
-                </Stack>
-                <Typography variant="body2" color="text.secondary">
-                  Assigned support:{" "}
-                  {state.data.detail.ticket.assignedEmployee?.name ||
-                    state.data.detail.ticket.assignedEmployee?.email ||
-                    "Pending assignment"}
-                </Typography>
-                <Typography variant="body2" color="text.secondary">
-                  Created: {safeFormatDate(state.data.detail.ticket.createdAt)}
-                </Typography>
-                <Typography variant="body2" color="text.secondary">
-                  Updated: {safeFormatDate(state.data.detail.ticket.updatedAt)}
-                </Typography>
-
-                <Divider />
-
-                <Typography variant="subtitle2">Status Flow</Typography>
-                <Stack direction="row" spacing={0.75} useFlexGap flexWrap="wrap">
-                  {STATUS_FLOW.map((statusLabel, index) => (
-                    <Chip
-                      key={statusLabel}
-                      label={statusLabel}
-                      color={index <= activeStatusIndex ? "primary" : "default"}
-                      variant={index <= activeStatusIndex ? "filled" : "outlined"}
-                    />
-                  ))}
-                </Stack>
-
-                <Divider />
-
-                <Typography variant="subtitle2">Ticket Description</Typography>
-                <Paper variant="outlined" sx={{ p: 1.25, borderColor: "#E5E7EB" }}>
-                  <Typography variant="body2">
-                    {state.data.detail.ticket.description || "No description provided."}
-                  </Typography>
-                </Paper>
-
-                <Typography variant="subtitle2">Attachments</Typography>
-                {state.data.detail.ticket.attachments.length === 0 && (
-                  <Typography variant="body2" color="text.secondary">
-                    No attachments were added.
-                  </Typography>
-                )}
-                {state.data.detail.ticket.attachments.length > 0 && (
-                  <Stack spacing={0.5}>
-                    {state.data.detail.ticket.attachments.map((attachment) => (
-                      <Typography key={attachment} variant="body2">
-                        - {attachment}
-                      </Typography>
-                    ))}
-                  </Stack>
-                )}
-
-                <Divider />
-
-                <Typography variant="subtitle2">Customer Satisfaction</Typography>
-                {state.data.detail.ticket.customerSatisfactionRating !== null ? (
-                  <Stack direction="row" spacing={1} alignItems="center">
-                    <Chip
-                      color="success"
-                      label={`Submitted: ${state.data.detail.ticket.customerSatisfactionRating}/5`}
-                    />
-                    {state.data.detail.ticket.customerSatisfactionSubmittedAt && (
-                      <Typography variant="caption" color="text.secondary">
-                        {safeFormatDate(state.data.detail.ticket.customerSatisfactionSubmittedAt)}
-                      </Typography>
-                    )}
-                  </Stack>
-                ) : state.data.detail.ticket.canSubmitCustomerSatisfaction ? (
-                  <Stack spacing={1}>
-                    <Typography variant="body2" color="text.secondary">
-                      This ticket is resolved. Please rate your support experience.
-                    </Typography>
-                    <Stack direction={{ xs: "column", sm: "row" }} spacing={1}>
-                      <FormControl size="small" sx={{ minWidth: 140 }}>
-                        <InputLabel id="ticket-rating-label">Rating</InputLabel>
-                        <Select
-                          labelId="ticket-rating-label"
-                          label="Rating"
-                          value={String(ratingDraft)}
-                          onChange={(event) => setRatingDraft(Number(event.target.value))}
-                        >
-                          {[5, 4, 3, 2, 1].map((rating) => (
-                            <MenuItem key={rating} value={String(rating)}>
-                              {rating}/5
-                            </MenuItem>
-                          ))}
-                        </Select>
-                      </FormControl>
-                      <Button
-                        variant="contained"
-                        onClick={handleSubmitCustomerSatisfaction}
-                        disabled={submittingRating}
-                      >
-                        {submittingRating ? "Submitting..." : "Submit Rating"}
-                      </Button>
-                    </Stack>
-                  </Stack>
-                ) : (
-                  <Typography variant="body2" color="text.secondary">
-                    Rating becomes available after the ticket is resolved.
-                  </Typography>
-                )}
-              </Stack>
-            </Paper>
-
-            <Paper elevation={1} sx={{ p: 2.5, flex: 1 }}>
-              <Typography variant="h6">Timeline</Typography>
-              <Typography variant="body2" color="text.secondary" sx={{ mb: 1.5 }}>
-                Ticket lifecycle events and status transitions.
+      {state.status === "ready" ? (
+        <Box
+          sx={{
+            display: "grid",
+            gridTemplateColumns: { xs: "1fr", lg: "minmax(0, 1.6fr) minmax(320px, 0.9fr)" },
+            gap: 3,
+            alignItems: "start",
+          }}
+        >
+          <ShellSection sx={{ display: "flex", flexDirection: "column", gap: 2, minHeight: 0 }}>
+            <Stack spacing={1}>
+              <Typography variant="h6" fontWeight={700}>
+                Conversation
               </Typography>
-              <Divider sx={{ mb: 1.5 }} />
-              <Stack spacing={1}>
-                {state.data.detail.timeline.map((item) => (
-                  <Paper key={item.id} variant="outlined" sx={{ p: 1, borderColor: "#E5E7EB" }}>
-                    <Stack direction={{ xs: "column", sm: "row" }} justifyContent="space-between" spacing={0.75}>
-                      <Typography variant="body2">{item.label}</Typography>
-                      <Chip size="small" label={item.type} variant="outlined" />
-                    </Stack>
-                    <Typography variant="caption" color="text.secondary">
-                      {safeFormatDate(item.createdAt)}
-                    </Typography>
-                  </Paper>
-                ))}
-              </Stack>
-
-              <Divider sx={{ my: 1.5 }} />
-
-              <Typography variant="h6">Conversation</Typography>
-              <Typography variant="body2" color="text.secondary" sx={{ mb: 1.5 }}>
+              <Typography variant="body2" color="text.secondary">
                 Messages between you and support.
               </Typography>
+            </Stack>
 
-              <Stack spacing={1} sx={{ mb: 1.5 }}>
-                {state.data.detail.messages.length === 0 && (
-                  <Typography variant="body2" color="text.secondary">
-                    No messages yet.
-                  </Typography>
-                )}
-
-                {state.data.detail.messages.map((message) => (
+            <Box
+              sx={{
+                display: "flex",
+                flexDirection: "column",
+                gap: 1,
+                maxHeight: { lg: "58vh" },
+                overflowY: "auto",
+                pr: 0.5,
+              }}
+            >
+              {state.data.detail.messages.length === 0 ? (
+                <Typography variant="body2" color="text.secondary">
+                  No messages yet.
+                </Typography>
+              ) : (
+                state.data.detail.messages.map((message) => (
                   <Box
                     key={message.id}
                     sx={{
@@ -560,27 +417,168 @@ export default function PortalTicketDetailPage() {
                     </Typography>
                     <Typography variant="body2">{message.messageText}</Typography>
                   </Box>
+                ))
+              )}
+            </Box>
+
+            <Divider />
+
+            <Stack component="form" spacing={1} onSubmit={handleSendMessage}>
+              <TextField
+                multiline
+                minRows={3}
+                label="Message"
+                value={messageDraft}
+                onChange={(event) => setMessageDraft(event.target.value)}
+                disabled={sendingMessage}
+              />
+              <Button type="submit" variant="contained" disabled={sendingMessage}>
+                {sendingMessage ? "Sending..." : "Send Message"}
+              </Button>
+            </Stack>
+          </ShellSection>
+
+          <ShellSection sx={{ display: "flex", flexDirection: "column", gap: 2 }}>
+            <Stack spacing={1}>
+              <Typography variant="h6" fontWeight={700}>
+                Ticket details
+              </Typography>
+              <Stack direction="row" spacing={0.75} useFlexGap flexWrap="wrap">
+                <Chip label={`Status: ${state.data.detail.ticket.status}`} />
+                <Chip label={`Priority: ${state.data.detail.ticket.priority}`} variant="outlined" />
+                <Chip label={`Category: ${state.data.detail.ticket.category}`} variant="outlined" />
+              </Stack>
+            </Stack>
+
+            <Typography variant="body2" color="text.secondary">
+              Assigned support:{" "}
+              {state.data.detail.ticket.assignedEmployee?.name ||
+                state.data.detail.ticket.assignedEmployee?.email ||
+                "Pending assignment"}
+            </Typography>
+            <Typography variant="body2" color="text.secondary">
+              Created: {safeFormatDate(state.data.detail.ticket.createdAt)}
+            </Typography>
+            <Typography variant="body2" color="text.secondary">
+              Updated: {safeFormatDate(state.data.detail.ticket.updatedAt)}
+            </Typography>
+
+            <Divider />
+
+            <Stack spacing={1}>
+              <Typography variant="subtitle2">Status flow</Typography>
+              <Stack direction="row" spacing={0.75} useFlexGap flexWrap="wrap">
+                {STATUS_FLOW.map((statusLabel, index) => (
+                  <Chip
+                    key={statusLabel}
+                    label={statusLabel}
+                    color={index <= activeStatusIndex ? "primary" : "default"}
+                    variant={index <= activeStatusIndex ? "filled" : "outlined"}
+                  />
                 ))}
               </Stack>
+            </Stack>
 
-              <Stack component="form" spacing={1} onSubmit={handleSendMessage}>
-                <TextField
-                  multiline
-                  minRows={3}
-                  label="Message"
-                  value={messageDraft}
-                  onChange={(event) => setMessageDraft(event.target.value)}
-                  disabled={sendingMessage}
-                />
-                {actionMessage && <Alert severity={actionMessage.type}>{actionMessage.text}</Alert>}
-                <Button type="submit" variant="contained" disabled={sendingMessage}>
-                  {sendingMessage ? "Sending..." : "Send Message"}
-                </Button>
+            <Stack spacing={1}>
+              <Typography variant="subtitle2">Description</Typography>
+              <Paper variant="outlined" sx={{ p: 1.25, borderColor: "#E5E7EB", boxShadow: "none" }}>
+                <Typography variant="body2">
+                  {state.data.detail.ticket.description || "No description provided."}
+                </Typography>
+              </Paper>
+            </Stack>
+
+            <Stack spacing={1}>
+              <Typography variant="subtitle2">Attachments</Typography>
+              {state.data.detail.ticket.attachments.length === 0 ? (
+                <Typography variant="body2" color="text.secondary">
+                  No attachments were added.
+                </Typography>
+              ) : (
+                <Stack spacing={0.5}>
+                  {state.data.detail.ticket.attachments.map((attachment) => (
+                    <Typography key={attachment} variant="body2">
+                      - {attachment}
+                    </Typography>
+                  ))}
+                </Stack>
+              )}
+            </Stack>
+
+            <Divider />
+
+            <Stack spacing={1.25}>
+              <Typography variant="subtitle2">Customer satisfaction</Typography>
+              {state.data.detail.ticket.customerSatisfactionRating !== null ? (
+                <Stack direction="row" spacing={1} alignItems="center">
+                  <Chip
+                    color="success"
+                    label={`Submitted: ${state.data.detail.ticket.customerSatisfactionRating}/5`}
+                  />
+                  {state.data.detail.ticket.customerSatisfactionSubmittedAt ? (
+                    <Typography variant="caption" color="text.secondary">
+                      {safeFormatDate(state.data.detail.ticket.customerSatisfactionSubmittedAt)}
+                    </Typography>
+                  ) : null}
+                </Stack>
+              ) : state.data.detail.ticket.canSubmitCustomerSatisfaction ? (
+                <Stack spacing={1}>
+                  <Typography variant="body2" color="text.secondary">
+                    This ticket is resolved. Please rate your support experience.
+                  </Typography>
+                  <Stack direction={{ xs: "column", sm: "row" }} spacing={1}>
+                    <FormControl size="small" sx={{ minWidth: 140 }}>
+                      <InputLabel id="ticket-rating-label">Rating</InputLabel>
+                      <Select
+                        labelId="ticket-rating-label"
+                        label="Rating"
+                        value={String(ratingDraft)}
+                        onChange={(event) => setRatingDraft(Number(event.target.value))}
+                      >
+                        {[5, 4, 3, 2, 1].map((rating) => (
+                          <MenuItem key={rating} value={String(rating)}>
+                            {rating}/5
+                          </MenuItem>
+                        ))}
+                      </Select>
+                    </FormControl>
+                    <Button
+                      variant="contained"
+                      onClick={handleSubmitCustomerSatisfaction}
+                      disabled={submittingRating}
+                    >
+                      {submittingRating ? "Submitting..." : "Submit Rating"}
+                    </Button>
+                  </Stack>
+                </Stack>
+              ) : (
+                <Typography variant="body2" color="text.secondary">
+                  Rating becomes available after the ticket is resolved.
+                </Typography>
+              )}
+            </Stack>
+
+            <Divider />
+
+            <Stack spacing={1}>
+              <Typography variant="subtitle2">Timeline</Typography>
+              <Stack spacing={1}>
+                {state.data.detail.timeline.map((item) => (
+                  <Paper key={item.id} variant="outlined" sx={{ p: 1, borderColor: "#E5E7EB", boxShadow: "none" }}>
+                    <Stack direction={{ xs: "column", sm: "row" }} justifyContent="space-between" spacing={0.75}>
+                      <Typography variant="body2">{item.label}</Typography>
+                      <Chip size="small" label={item.type} variant="outlined" />
+                    </Stack>
+                    <Typography variant="caption" color="text.secondary">
+                      {safeFormatDate(item.createdAt)}
+                    </Typography>
+                  </Paper>
+                ))}
               </Stack>
-            </Paper>
-          </Stack>
-        )}
-      </Stack>
-    </Container>
+            </Stack>
+          </ShellSection>
+        </Box>
+      ) : null}
+    </Stack>
   );
 }

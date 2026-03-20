@@ -1,5 +1,4 @@
 import { expect, test } from "@playwright/test";
-import { APP_FOOTER_TEXT } from "../../lib/appMeta";
 
 const API_BASE_URL = "http://127.0.0.1:4000";
 
@@ -139,6 +138,7 @@ test("customer login redirect, portal flow, and footer visibility", async ({ pag
               status: "Open",
               priority: "Medium",
               category: "General Inquiry",
+              attachmentCount: 2,
               description: "Need help",
               attachments: ["first.txt", "second.txt"],
               createdAt: "2026-03-08T00:00:00.000Z",
@@ -176,7 +176,7 @@ test("customer login redirect, portal flow, and footer visibility", async ({ pag
   });
 
   await page.goto("/");
-  await expect(page.getByText(APP_FOOTER_TEXT)).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Why teams switch to TreeCRM" })).toBeVisible();
 
   await page.goto("/login");
   await page.getByRole("textbox", { name: /email/i }).fill("customer@example.com");
@@ -184,15 +184,17 @@ test("customer login redirect, portal flow, and footer visibility", async ({ pag
   await page.getByRole("button", { name: "Login" }).nth(1).click();
 
   await expect(page).toHaveURL(/\/portal$/);
-  await expect(page.getByText("Customer Portal")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Tickets", level: 1 })).toBeVisible();
 
+  await page.getByRole("button", { name: "Create ticket", exact: true }).click();
   await page.getByRole("textbox", { name: /subject/i }).fill("Created ticket");
   await page.getByRole("textbox", { name: /description/i }).fill("Need help");
   await page.getByRole("textbox", { name: /attachments \(one per line\)/i }).fill("first.txt\nsecond.txt");
-  await page.getByRole("button", { name: "Create Ticket" }).click();
+  await page.getByRole("button", { name: "Create ticket" }).last().click();
 
   await expect(page).toHaveURL(/\/portal\/ticket-created$/);
-  await expect(page.getByRole("heading", { name: "Ticket Detail" })).toBeVisible();
-  await expect(page.getByRole("link", { name: "Back to Tickets" })).toBeVisible();
-  await expect(page.getByText(APP_FOOTER_TEXT)).toBeVisible();
+  await page.waitForLoadState("networkidle");
+  await expect(page.getByRole("heading", { name: "Conversation" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Ticket details" })).toBeVisible();
+  await expect(page.getByRole("link", { name: "Back to tickets" })).toBeVisible();
 });

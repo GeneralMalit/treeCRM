@@ -6,16 +6,16 @@ export function AppFooter() {
     <Box
       component="footer"
       sx={{
-        borderTop: "1px solid #E5E7EB",
-        backgroundColor: "#F8FAFC",
+        borderTop: "1px solid rgba(148, 163, 184, 0.35)",
+        backgroundColor: "#f8fafc",
         mt: "auto",
       }}
     >
-      <Container maxWidth="lg" sx={{ py: 2.5 }}>
+      <Container maxWidth="lg" sx={{ py: 1.75 }}>
         <Typography
-          variant="body2"
+          variant="caption"
           color="text.secondary"
-          sx={{ textAlign: "center", fontFamily: "var(--font-geist-sans)" }}
+          sx={{ textAlign: "center", display: "block", fontFamily: "var(--font-geist-sans)" }}
         >
           {APP_FOOTER_TEXT}
         </Typography>
