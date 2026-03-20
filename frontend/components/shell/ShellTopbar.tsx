@@ -62,7 +62,14 @@ export function ShellTopbar({ title, subtitle, onMenuClick, actions }: ShellTopb
           ) : null}
         </Stack>
         {actions ? <Box sx={{ display: "flex", alignItems: "center", gap: 1, flexWrap: "wrap" }}>{actions}</Box> : null}
-        <Button variant="outlined" size="small" href="/login" sx={{ ml: 1 }}>
+        <Button
+          variant="outlined"
+          size="small"
+          onClick={() => {
+            window.location.assign("/login");
+          }}
+          sx={{ ml: 1 }}
+        >
           Logout
         </Button>
       </Toolbar>

@@ -17,9 +17,9 @@ export function ShellPageHeader({ title, description, actions }: ShellPageHeader
         justifyContent: "space-between",
         gap: 2,
       }}
-    >
+      >
       <Stack spacing={0.75} sx={{ minWidth: 0 }}>
-        <Typography variant="h4" fontWeight={800} sx={{ letterSpacing: "-0.03em" }}>
+        <Typography component="h1" variant="h4" fontWeight={800} sx={{ letterSpacing: "-0.03em" }}>
           {title}
         </Typography>
         {description ? (
