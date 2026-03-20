@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { Button, Stack, Typography } from "@mui/material";
+import { AuthenticatedShell } from "@/components/shell/AuthenticatedShell";
 import { ShellPageHeader } from "@/components/shell/ShellPageHeader";
 import { ShellSection } from "@/components/shell/ShellSection";
 import { ShellStatStrip } from "@/components/shell/ShellStatStrip";
@@ -26,48 +27,50 @@ export default function AdminPage() {
     : [];
 
   return (
-    <Stack spacing={3}>
-      <ShellPageHeader
-        title="Overview"
-        description="A short entry point for admin work. Use the dedicated sections for users, tags, and settings."
-        actions={
-          <>
-            <Button variant="outlined" onClick={() => void refresh()} disabled={loadingData}>
-              {loadingData ? "Refreshing" : "Refresh"}
-            </Button>
-          </>
-        }
-      />
+    <AuthenticatedShell role="Admin" title="Admin" subtitle="Overview">
+      <Stack spacing={3}>
+        <ShellPageHeader
+          title="Overview"
+          description="A short entry point for admin work. Use the dedicated sections for users, tags, and settings."
+          actions={
+            <>
+              <Button variant="outlined" onClick={() => void refresh()} disabled={loadingData}>
+                {loadingData ? "Refreshing" : "Refresh"}
+              </Button>
+            </>
+          }
+        />
 
-      {error ? (
+        {error ? (
+          <ShellSection>
+            <Typography color="error">{error}</Typography>
+          </ShellSection>
+        ) : null}
+
+        {data ? <ShellStatStrip items={stats} /> : null}
+
         <ShellSection>
-          <Typography color="error">{error}</Typography>
-        </ShellSection>
-      ) : null}
-
-      {data ? <ShellStatStrip items={stats} /> : null}
-
-      <ShellSection>
-        <Stack spacing={1}>
-          <Typography variant="h6" fontWeight={700}>
-            Shortcuts
-          </Typography>
-          <Typography variant="body2" color="text.secondary">
-            Jump directly into the section you need without opening a giant workspace view.
-          </Typography>
-          <Stack direction={{ xs: "column", sm: "row" }} spacing={1.25} flexWrap="wrap" sx={{ pt: 1 }}>
-            <Button component={Link} href="/admin/users" variant="contained">
-              Manage users
-            </Button>
-            <Button component={Link} href="/admin/tags" variant="outlined">
-              Manage tags
-            </Button>
-            <Button component={Link} href="/admin/settings" variant="outlined">
-              Edit settings
-            </Button>
+          <Stack spacing={1}>
+            <Typography variant="h6" fontWeight={700}>
+              Shortcuts
+            </Typography>
+            <Typography variant="body2" color="text.secondary">
+              Jump directly into the section you need without opening a giant workspace view.
+            </Typography>
+            <Stack direction={{ xs: "column", sm: "row" }} spacing={1.25} flexWrap="wrap" sx={{ pt: 1 }}>
+              <Button component={Link} href="/admin/users" variant="contained">
+                Manage users
+              </Button>
+              <Button component={Link} href="/admin/tags" variant="outlined">
+                Manage tags
+              </Button>
+              <Button component={Link} href="/admin/settings" variant="outlined">
+                Edit settings
+              </Button>
+            </Stack>
           </Stack>
-        </Stack>
-      </ShellSection>
-    </Stack>
+        </ShellSection>
+      </Stack>
+    </AuthenticatedShell>
   );
 }

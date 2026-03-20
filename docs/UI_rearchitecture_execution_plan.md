@@ -483,3 +483,7 @@ This document replaces the lighter UI plan with a decision-complete execution ch
 - [x] Shared authenticated shell is live across authenticated areas.
 - [x] Giant monolithic pages are removed or reduced to page-specific focused components.
 - [x] Validation passes and the app is visibly more production-ready for real operational use.
+
+## Validation Note
+
+- Local route smoke on March 20, 2026 confirmed the authenticated admin and employee route targets now resolve without 404s.
