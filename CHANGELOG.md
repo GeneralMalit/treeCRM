@@ -1,3 +1,5 @@
+## [1.3.7](https://github.com/GeneralMalit/treeCRM/compare/treeCRM-v1.3.6...treeCRM-v1.3.7) (2026-03-20)
+
 ## [1.3.6](https://github.com/GeneralMalit/treeCRM/compare/treeCRM-v1.3.5...treeCRM-v1.3.6) (2026-03-20)
 
 ## [1.3.5](https://github.com/GeneralMalit/treeCRM/compare/treeCRM-v1.3.4...treeCRM-v1.3.5) (2026-03-20)
