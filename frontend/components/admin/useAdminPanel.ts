@@ -55,7 +55,7 @@ export function useAdminPanel() {
     loadingData: true,
   });
 
-  const refresh = useCallback(async () => {
+  const loadIntoState = useCallback(async () => {
     const accessToken = getStoredAccessToken();
     if (!accessToken) {
       clearStoredAccessToken();
@@ -84,9 +84,27 @@ export function useAdminPanel() {
     }
   }, []);
 
+  const refresh = useCallback(async () => {
+    await loadIntoState();
+  }, [loadIntoState]);
+
   useEffect(() => {
-    void refresh();
-  }, [refresh]);
+    let cancelled = false;
+
+    const run = async () => {
+      if (cancelled) {
+        return;
+      }
+
+      await loadIntoState();
+    };
+
+    void run();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [loadIntoState]);
 
   return {
     data: state.data,
