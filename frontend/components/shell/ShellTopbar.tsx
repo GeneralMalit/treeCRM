@@ -2,6 +2,9 @@
 
 import { AppBar, Box, Button, IconButton, Stack, Toolbar, Typography } from "@mui/material";
 import type { ReactNode } from "react";
+import { useState } from "react";
+import { useRouter } from "next/navigation";
+import { clearStoredAccessToken, getStoredAccessToken, logout } from "@/lib/auth";
 
 type ShellTopbarProps = {
   title: string;
@@ -11,6 +14,28 @@ type ShellTopbarProps = {
 };
 
 export function ShellTopbar({ title, subtitle, onMenuClick, actions }: ShellTopbarProps) {
+  const router = useRouter();
+  const [isLoggingOut, setIsLoggingOut] = useState(false);
+
+  const handleLogout = async () => {
+    if (isLoggingOut) {
+      return;
+    }
+
+    setIsLoggingOut(true);
+
+    const accessToken = getStoredAccessToken();
+    try {
+      if (accessToken) {
+        await logout(accessToken);
+      }
+    } finally {
+      clearStoredAccessToken();
+      router.replace("/login");
+      setIsLoggingOut(false);
+    }
+  };
+
   return (
     <AppBar
       position="sticky"
@@ -65,12 +90,11 @@ export function ShellTopbar({ title, subtitle, onMenuClick, actions }: ShellTopb
         <Button
           variant="outlined"
           size="small"
-          onClick={() => {
-            window.location.assign("/login");
-          }}
+          onClick={() => void handleLogout()}
+          disabled={isLoggingOut}
           sx={{ ml: 1 }}
         >
-          Logout
+          {isLoggingOut ? "Logging out..." : "Logout"}
         </Button>
       </Toolbar>
     </AppBar>
