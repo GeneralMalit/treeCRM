@@ -14,6 +14,10 @@
 
 TreeCRM is a visual CRM and support platform. The backend handles auth, RBAC, workflow rules, chat routing, notifications, metrics, and admin operations. The frontend renders the employee tree workspace, customer portal, login flow, and admin surface.
 
+## UI Snapshot
+
+![TreeCRM login screen](frontend/screenshots/login.png)
+
 ## What This Repo Contains
 
 - `frontend/`: Next.js 16, React 19, Tailwind 4, Material UI 7.
