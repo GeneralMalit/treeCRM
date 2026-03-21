@@ -671,6 +671,26 @@ describe("coreDataRoutes coverage", () => {
     expect(response.body.message).toBe("Record not found.");
   });
 
+  it("returns 500 when generic record lookup fails", async () => {
+    const { app } = await loadCoreDataApp({
+      plan: {
+        customers: {
+          maybeSingle: {
+            data: null,
+            error: { message: "lookup failed" },
+          },
+        },
+      },
+    });
+
+    const response = await request(app)
+      .get(`/data/customers/${CUSTOMER_ID}`)
+      .set("Authorization", `Bearer ${adminToken}`);
+
+    expect(response.status).toBe(500);
+    expect(response.body.message).toBe("lookup failed");
+  });
+
   it("returns sync-pending fallback when user update succeeds but synced row is missing", async () => {
     const selectMaybeSingle = vi
       .fn()
@@ -1130,6 +1150,92 @@ describe("coreDataRoutes coverage", () => {
     });
   });
 
+  it("returns 500 when the public user row deletion fails after auth delete succeeds", async () => {
+    const deleteUser = vi.fn().mockResolvedValue({ data: {}, error: null });
+    const { app } = await loadCoreDataApp({
+      deleteUser,
+      plan: {
+        users: {
+          delete: {
+            data: null,
+            error: { message: "public row delete failed" },
+          },
+        },
+      },
+    });
+
+    const response = await request(app)
+      .delete(`/data/users/${USER_ID}`)
+      .set("Authorization", `Bearer ${adminToken}`);
+
+    expect(response.status).toBe(500);
+    expect(response.body.message).toBe("public row delete failed");
+  });
+
+  it("returns 500 when counting admin users fails during admin deletion", async () => {
+    const usersTable = createSequencedUsersTable({
+      selectResults: [ok({ id: USER_ID, role: "Admin" }), { data: null, error: { message: "count failed" } }],
+    });
+
+    const { app } = await loadCoreDataApp({
+      supabaseAdminOverride: {
+        from(table: string) {
+          if (table === "users") {
+            return usersTable;
+          }
+
+          return createSupabaseAdminMock({}).from(table);
+        },
+        auth: {
+          admin: {
+            createUser: vi.fn(),
+            updateUserById: vi.fn(),
+            deleteUser: vi.fn().mockResolvedValue({ data: {}, error: null }),
+          },
+        },
+      },
+    });
+
+    const response = await request(app)
+      .delete(`/data/users/${USER_ID}`)
+      .set("Authorization", `Bearer ${adminToken}`);
+
+    expect(response.status).toBe(500);
+    expect(response.body.message).toBe("count failed");
+  });
+
+  it("returns 500 when looking up a user to delete fails", async () => {
+    const usersTable = createSequencedUsersTable({
+      selectResults: [{ data: null, error: { message: "lookup failed" } }],
+    });
+
+    const { app } = await loadCoreDataApp({
+      supabaseAdminOverride: {
+        from(table: string) {
+          if (table === "users") {
+            return usersTable;
+          }
+
+          return createSupabaseAdminMock({}).from(table);
+        },
+        auth: {
+          admin: {
+            createUser: vi.fn(),
+            updateUserById: vi.fn(),
+            deleteUser: vi.fn(),
+          },
+        },
+      },
+    });
+
+    const response = await request(app)
+      .delete(`/data/users/${USER_ID}`)
+      .set("Authorization", `Bearer ${adminToken}`);
+
+    expect(response.status).toBe(500);
+    expect(response.body.message).toBe("lookup failed");
+  });
+
   it.each(genericResourceConfigs)("covers generic resource GET list routes for $path", async (resource) => {
     const { app } = await loadCoreDataApp({
       plan: {
@@ -1148,6 +1254,46 @@ describe("coreDataRoutes coverage", () => {
       status: "ok",
       data: [resource.dbRow],
     });
+  });
+
+  it.each(genericResourceConfigs)("covers generic resource GET by id success routes for $path", async (resource) => {
+    const { app } = await loadCoreDataApp({
+      plan: {
+        [resource.table]: {
+          maybeSingle: ok(resource.dbRow),
+        },
+      },
+    });
+
+    const response = await request(app)
+      .get(`/data/${resource.path}/${resource.id}`)
+      .set("Authorization", `Bearer ${adminToken}`);
+
+    expect(response.status).toBe(200);
+    expect(response.body).toMatchObject({
+      status: "ok",
+      data: resource.dbRow,
+    });
+  });
+
+  it.each(genericResourceConfigs)("covers generic resource GET list error routes for $path", async (resource) => {
+    const { app } = await loadCoreDataApp({
+      plan: {
+        [resource.table]: {
+          list: {
+            data: null,
+            error: { message: "list failed" },
+          },
+        },
+      },
+    });
+
+    const response = await request(app)
+      .get(`/data/${resource.path}`)
+      .set("Authorization", `Bearer ${adminToken}`);
+
+    expect(response.status).toBe(500);
+    expect(response.body.message).toBe("list failed");
   });
 
   it.each(genericResourceConfigs)("covers generic resource POST success routes for $path", async (resource) => {
@@ -1169,6 +1315,43 @@ describe("coreDataRoutes coverage", () => {
       status: "ok",
       data: resource.dbRow,
     });
+  });
+
+  it.each(genericResourceConfigs)(
+    "rejects non-JSON request bodies for generic resource POST routes for $path",
+    async (resource) => {
+      const { app } = await loadCoreDataApp();
+
+      const response = await request(app)
+        .post(`/data/${resource.path}`)
+        .set("Authorization", `Bearer ${adminToken}`)
+        .set("Content-Type", "text/plain")
+        .send("hello");
+
+      expect(response.status).toBe(400);
+      expect(response.body.message).toBe("Request body must be a JSON object.");
+    },
+  );
+
+  it.each(genericResourceConfigs)("covers generic resource POST error routes for $path", async (resource) => {
+    const { app } = await loadCoreDataApp({
+      plan: {
+        [resource.table]: {
+          single: {
+            data: null,
+            error: { message: "insert failed" },
+          },
+        },
+      },
+    });
+
+    const response = await request(app)
+      .post(`/data/${resource.path}`)
+      .set("Authorization", `Bearer ${adminToken}`)
+      .send(resource.createPayload);
+
+    expect(response.status).toBe(400);
+    expect(response.body.message).toBe("insert failed");
   });
 
   it.each(genericResourceConfigs)(
@@ -1203,6 +1386,17 @@ describe("coreDataRoutes coverage", () => {
     expect(response.body.message).toBe("Record not found.");
   });
 
+  it("rejects invalid UUIDs when reading generic resources by id", async () => {
+    const { app } = await loadCoreDataApp();
+
+    const response = await request(app)
+      .get("/data/customers/not-a-uuid")
+      .set("Authorization", `Bearer ${adminToken}`);
+
+    expect(response.status).toBe(400);
+    expect(response.body.message).toBe("id must be a valid UUID.");
+  });
+
   it.each(genericResourceConfigs)("covers generic resource PATCH success routes for $path", async (resource) => {
     const { app } = await loadCoreDataApp({
       plan: {
@@ -1224,6 +1418,104 @@ describe("coreDataRoutes coverage", () => {
     });
   });
 
+  it("covers generic resource PATCH validation failure for customers", async () => {
+    const { app } = await loadCoreDataApp();
+
+    const response = await request(app)
+      .patch(`/data/customers/${CUSTOMER_ID}`)
+      .set("Authorization", `Bearer ${adminToken}`)
+      .send({
+        company: 123,
+      });
+
+    expect(response.status).toBe(400);
+    expect(response.body.status).toBe("error");
+  });
+
+  it("rejects non-object PATCH bodies for generic resources", async () => {
+    const { app } = await loadCoreDataApp();
+
+    const response = await request(app)
+      .patch(`/data/cases/${CASE_ID}`)
+      .set("Authorization", `Bearer ${adminToken}`)
+      .send([]);
+
+    expect(response.status).toBe(400);
+    expect(response.body.message).toBe("Request body must be a JSON object.");
+  });
+
+  it("rejects invalid UUIDs when patching generic resources", async () => {
+    const { app } = await loadCoreDataApp();
+
+    const response = await request(app)
+      .patch("/data/cases/not-a-uuid")
+      .set("Authorization", `Bearer ${adminToken}`)
+      .send({
+        status: "Resolved",
+      });
+
+    expect(response.status).toBe(400);
+    expect(response.body.message).toBe("id must be a valid UUID.");
+  });
+
+  it.each(genericResourceConfigs)("covers generic resource PATCH validation failures for $path", async (resource) => {
+    const { app } = await loadCoreDataApp();
+    const invalidPayload =
+      resource.path === "case-tags"
+        ? {
+            caseId: CASE_ID,
+            tagId: "not-a-uuid",
+          }
+        : resource.invalidPayload;
+
+    const response = await request(app)
+      .patch(`/data/${resource.path}/${resource.id}`)
+      .set("Authorization", `Bearer ${adminToken}`)
+      .send(invalidPayload);
+
+    expect(response.status).toBe(400);
+    expect(response.body.status).toBe("error");
+  });
+
+  it.each(genericResourceConfigs)("covers generic resource PATCH not-found routes for $path", async (resource) => {
+    const { app } = await loadCoreDataApp({
+      plan: {
+        [resource.table]: {
+          update: ok(null),
+        },
+      },
+    });
+
+    const response = await request(app)
+      .patch(`/data/${resource.path}/${resource.id}`)
+      .set("Authorization", `Bearer ${adminToken}`)
+      .send(resource.updatePayload);
+
+    expect(response.status).toBe(404);
+    expect(response.body.message).toBe("Record not found.");
+  });
+
+  it.each(genericResourceConfigs)("covers generic resource PATCH error routes for $path", async (resource) => {
+    const { app } = await loadCoreDataApp({
+      plan: {
+        [resource.table]: {
+          update: {
+            data: null,
+            error: { message: "update failed" },
+          },
+        },
+      },
+    });
+
+    const response = await request(app)
+      .patch(`/data/${resource.path}/${resource.id}`)
+      .set("Authorization", `Bearer ${adminToken}`)
+      .send(resource.updatePayload);
+
+    expect(response.status).toBe(400);
+    expect(response.body.message).toBe("update failed");
+  });
+
   it.each(genericResourceConfigs)("covers generic resource DELETE success routes for $path", async (resource) => {
     const { app } = await loadCoreDataApp({
       plan: {
@@ -1242,5 +1534,400 @@ describe("coreDataRoutes coverage", () => {
       status: "ok",
       data: resource.dbRow,
     });
+  });
+
+  it("covers generic resource POST success routes with minimal optional fields", async () => {
+    const minimalResources = [
+      {
+        path: "customers",
+        table: "customers",
+        payload: {
+          userId: USER_ID,
+          company: "Acme Co",
+        },
+        row: {
+          id: CUSTOMER_ID,
+          user_id: USER_ID,
+          company: "Acme Co",
+          created_at: CREATED_AT,
+        },
+      },
+      {
+        path: "cases",
+        table: "cases",
+        payload: {
+          customerId: CUSTOMER_ID,
+          title: "Broken router",
+        },
+        row: {
+          id: CASE_ID,
+          customer_id: CUSTOMER_ID,
+          title: "Broken router",
+          created_at: CREATED_AT,
+          updated_at: UPDATED_AT,
+        },
+      },
+      {
+        path: "tags",
+        table: "tags",
+        payload: {
+          name: "VIP",
+        },
+        row: {
+          id: TAG_ID,
+          name: "VIP",
+          created_at: CREATED_AT,
+        },
+      },
+      {
+        path: "messages",
+        table: "messages",
+        payload: {
+          caseId: CASE_ID,
+          senderRole: "CSR",
+          messageText: "Hello",
+        },
+        row: {
+          id: MESSAGE_ID,
+          case_id: CASE_ID,
+          sender_id: null,
+          sender_role: "CSR",
+          message_type: "text",
+          message_text: "Hello",
+          created_at: CREATED_AT,
+        },
+      },
+      {
+        path: "endorsements",
+        table: "endorsements",
+        payload: {
+          caseId: CASE_ID,
+          endorsedBy: CSR_ID,
+          endorsedTo: MANAGER_ID,
+        },
+        row: {
+          id: ENDORSEMENT_ID,
+          case_id: CASE_ID,
+          endorsed_by: CSR_ID,
+          endorsed_to: MANAGER_ID,
+          created_at: CREATED_AT,
+        },
+      },
+      {
+        path: "notifications",
+        table: "notifications",
+        payload: {
+          userId: NOTIFICATION_USER_ID,
+          type: "case_message",
+          message: "Hello",
+        },
+        row: {
+          id: NOTIFICATION_ID,
+          user_id: NOTIFICATION_USER_ID,
+          type: "case_message",
+          message: "Hello",
+          created_at: CREATED_AT,
+        },
+      },
+    ] as const;
+
+    for (const resource of minimalResources) {
+      const { app } = await loadCoreDataApp({
+        plan: {
+          [resource.table]: {
+            single: ok(resource.row),
+          },
+        },
+      });
+
+      const response = await request(app)
+        .post(`/data/${resource.path}`)
+        .set("Authorization", `Bearer ${adminToken}`)
+        .send(resource.payload);
+
+      expect(response.status).toBe(201);
+      expect(response.body).toMatchObject({
+        status: "ok",
+        data: resource.row,
+      });
+    }
+  });
+
+  it("rejects invalid UUIDs when deleting generic resources", async () => {
+    const { app } = await loadCoreDataApp();
+
+    const response = await request(app)
+      .delete("/data/tags/not-a-uuid")
+      .set("Authorization", `Bearer ${adminToken}`);
+
+    expect(response.status).toBe(400);
+    expect(response.body.message).toBe("id must be a valid UUID.");
+  });
+
+  it.each(genericResourceConfigs)("covers generic resource DELETE not-found routes for $path", async (resource) => {
+    const { app } = await loadCoreDataApp({
+      plan: {
+        [resource.table]: {
+          delete: ok(null),
+        },
+      },
+    });
+
+    const response = await request(app)
+      .delete(`/data/${resource.path}/${resource.id}`)
+      .set("Authorization", `Bearer ${adminToken}`);
+
+    expect(response.status).toBe(404);
+    expect(response.body.message).toBe("Record not found.");
+  });
+
+  it.each(genericResourceConfigs)("covers generic resource DELETE error routes for $path", async (resource) => {
+    const { app } = await loadCoreDataApp({
+      plan: {
+        [resource.table]: {
+          delete: {
+            data: null,
+            error: { message: "delete failed" },
+          },
+        },
+      },
+    });
+
+    const response = await request(app)
+      .delete(`/data/${resource.path}/${resource.id}`)
+      .set("Authorization", `Bearer ${adminToken}`);
+
+    expect(response.status).toBe(400);
+    expect(response.body.message).toBe("delete failed");
+  });
+
+  it("covers generic resource DELETE not-found and error paths for customers", async () => {
+    const notFoundApp = await loadCoreDataApp({
+      plan: {
+        customers: {
+          delete: ok(null),
+        },
+      },
+    });
+
+    const notFoundResponse = await request(notFoundApp.app)
+      .delete(`/data/customers/${CUSTOMER_ID}`)
+      .set("Authorization", `Bearer ${adminToken}`);
+
+    expect(notFoundResponse.status).toBe(404);
+    expect(notFoundResponse.body.message).toBe("Record not found.");
+
+    const errorApp = await loadCoreDataApp({
+      plan: {
+        customers: {
+          delete: {
+            data: null,
+            error: { message: "delete failed" },
+          },
+        },
+      },
+    });
+
+    const errorResponse = await request(errorApp.app)
+      .delete(`/data/customers/${CUSTOMER_ID}`)
+      .set("Authorization", `Bearer ${adminToken}`);
+
+    expect(errorResponse.status).toBe(400);
+    expect(errorResponse.body.message).toBe("delete failed");
+  });
+
+  it("returns 400 when auth user creation fails", async () => {
+    const createUser = vi.fn().mockResolvedValue({
+      data: null,
+      error: { message: "create failed" },
+    });
+    const { app } = await loadCoreDataApp({ createUser });
+
+    const response = await request(app)
+      .post("/data/users")
+      .set("Authorization", `Bearer ${adminToken}`)
+      .send({
+        email: "created@example.com",
+        password: "long-enough-password",
+        role: "Customer",
+      });
+
+    expect(response.status).toBe(400);
+    expect(response.body.message).toBe("create failed");
+  });
+
+  it("returns 500 when persisting a CSR manager assignment fails", async () => {
+    const createUser = vi.fn().mockResolvedValue({
+      data: { user: { id: USER_ID, email: "csr@example.com" } },
+      error: null,
+    });
+    const usersTable = createSequencedUsersTable({
+      selectResults: [
+        ok({ id: MANAGER_ID, role: "Manager" }),
+        {
+          data: null,
+          error: { message: "persist failed" },
+        } as ReturnType<typeof ok>,
+      ],
+    });
+    const { app } = await loadCoreDataApp({
+      createUser,
+      supabaseAdminOverride: {
+        from(table: string) {
+          if (table === "users") {
+            return usersTable;
+          }
+
+          return createSupabaseAdminMock({}).from(table);
+        },
+        auth: {
+          admin: {
+            createUser,
+            updateUserById: vi.fn(),
+            deleteUser: vi.fn(),
+          },
+        },
+      },
+    });
+
+    const response = await request(app)
+      .post("/data/users")
+      .set("Authorization", `Bearer ${adminToken}`)
+      .send({
+        email: "csr@example.com",
+        password: "long-enough-password",
+        role: "CSR",
+        name: "CSR User",
+        managerId: MANAGER_ID,
+      });
+
+    expect(response.status).toBe(500);
+    expect(response.body.message).toContain("failed to persist manager assignment");
+  });
+
+  it("returns 500 when user lookup fails during update", async () => {
+    const { app } = await loadCoreDataApp({
+      supabaseAdminOverride: {
+        from(table: string) {
+          if (table === "users") {
+            return {
+              select() {
+                return this;
+              },
+              update() {
+                return this;
+              },
+              eq() {
+                return this;
+              },
+              maybeSingle() {
+                return Promise.resolve({
+                  data: null,
+                  error: { message: "lookup failed" },
+                });
+              },
+            };
+          }
+
+          return createSupabaseAdminMock({}).from(table);
+        },
+        auth: {
+          admin: {
+            createUser: vi.fn(),
+            updateUserById: vi.fn(),
+            deleteUser: vi.fn(),
+          },
+        },
+      },
+    });
+
+    const response = await request(app)
+      .patch(`/data/users/${USER_ID}`)
+      .set("Authorization", `Bearer ${adminToken}`)
+      .send({
+        email: "updated@example.com",
+      });
+
+    expect(response.status).toBe(500);
+    expect(response.body.message).toBe("lookup failed");
+  });
+
+  it("returns 400 when auth user update fails", async () => {
+    const updateUserById = vi.fn().mockResolvedValue({
+      data: null,
+      error: { message: "update failed" },
+    });
+    const { app } = await loadCoreDataApp({
+      updateUserById,
+      plan: {
+        users: {
+          maybeSingle: ok({
+            id: USER_ID,
+            email: "target@example.com",
+            name: "Target User",
+            role: "Customer",
+          }),
+        },
+      },
+    });
+
+    const response = await request(app)
+      .patch(`/data/users/${USER_ID}`)
+      .set("Authorization", `Bearer ${adminToken}`)
+      .send({
+        email: "updated@example.com",
+      });
+
+    expect(response.status).toBe(400);
+    expect(response.body.message).toBe("update failed");
+  });
+
+  it("returns 500 when admin counts cannot be loaded during demotion", async () => {
+    const { app } = await loadCoreDataApp({
+      plan: {
+        users: {
+          maybeSingle: ok({
+            id: USER_ID,
+            email: "admin@example.com",
+            name: "Admin User",
+            role: "Admin",
+          }),
+          list: {
+            data: null,
+            error: { message: "count failed" },
+          },
+        },
+      },
+    });
+
+    const response = await request(app)
+      .patch(`/data/users/${USER_ID}`)
+      .set("Authorization", `Bearer ${adminToken}`)
+      .send({ role: "Manager" });
+
+    expect(response.status).toBe(500);
+    expect(response.body.message).toBe("count failed");
+  });
+
+  it("returns 400 when auth user deletion fails", async () => {
+    const deleteUser = vi.fn().mockResolvedValue({
+      data: null,
+      error: { message: "delete failed" },
+    });
+    const { app } = await loadCoreDataApp({
+      deleteUser,
+      plan: {
+        users: {
+          delete: ok({ id: USER_ID, role: "Customer" }),
+        },
+      },
+    });
+
+    const response = await request(app)
+      .delete(`/data/users/${USER_ID}`)
+      .set("Authorization", `Bearer ${adminToken}`);
+
+    expect(response.status).toBe(400);
+    expect(response.body.message).toBe("delete failed");
   });
 });

@@ -70,4 +70,23 @@ describe("LoginPage", () => {
       expect(screen.getByText("Registration failed")).toBeInTheDocument();
     });
   });
+
+  it("opens register mode from the query string and shows fallback auth errors", async () => {
+    const { register } = await import("@/lib/auth");
+    vi.mocked(register).mockRejectedValue("boom");
+    window.history.pushState({}, "", "/login?mode=register");
+
+    render(<LoginPage />);
+
+    expect(screen.getByLabelText("Name (optional)")).toBeInTheDocument();
+    fireEvent.change(screen.getAllByRole("textbox", { name: /email/i })[0] as HTMLElement, {
+      target: { value: "user@example.com" },
+    });
+    fireEvent.change(screen.getByLabelText(/password/i), { target: { value: "password123" } });
+    fireEvent.click(screen.getAllByRole("button", { name: "Register" })[1] as HTMLElement);
+
+    await waitFor(() => {
+      expect(screen.getByText("Authentication failed.")).toBeInTheDocument();
+    });
+  });
 });

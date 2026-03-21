@@ -4,6 +4,7 @@ import {
   getLandingRoute,
   getStoredAccessToken,
   login,
+  logout,
   me,
   register,
   setStoredAccessToken,
@@ -76,5 +77,57 @@ describe("auth client", () => {
         role: "Customer",
       },
     });
+  });
+
+  it("surfaces malformed auth payloads and logs out", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          status: "ok",
+          message: "ok",
+          user: { id: "user-1", email: "user@example.com", role: "Bogus" },
+        }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          status: "ok",
+          message: "ok",
+          user: { id: "user-1", email: "user@example.com", role: "Customer" },
+        }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          status: "ok",
+          message: "ok",
+          user: { sub: "user-1", email: "user@example.com", role: "Bogus" },
+        }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ status: "ok", user: { sub: "user-1", email: "user@example.com", role: "Customer" } }),
+      });
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(register("user@example.com", "password123")).rejects.toThrow(
+      "Unexpected registration response format.",
+    );
+    await expect(login("user@example.com", "password123")).rejects.toThrow(
+      "Unexpected login response format.",
+    );
+    await expect(me("token-1")).rejects.toThrow("Unexpected /auth/me response format.");
+    await expect(logout("token-1")).resolves.toBeUndefined();
+
+    expect(fetchMock.mock.calls[3]?.[0]).toBe("http://localhost:4000/auth/logout");
+  });
+
+  it("maps landing routes for all supported roles", () => {
+    expect(getLandingRoute("CSR")).toBe("/employee/csr");
+    expect(getLandingRoute("Manager")).toBe("/employee/manager");
+    expect(getLandingRoute("Executive")).toBe("/employee/executive");
+    expect(getLandingRoute("Customer")).toBe("/portal");
   });
 });

@@ -167,5 +167,20 @@ describe("auth and protected routes", () => {
       .set("Authorization", `Bearer ${csrToken}`);
     expect(allowedResponse.status).toBe(200);
     expect(allowedResponse.body.message).toContain("CSR dashboard access granted");
+
+    const managerResponse = await request(app)
+      .get("/employee/manager")
+      .set("Authorization", `Bearer ${signTestJwt({ sub: "manager-1", email: "manager@example.com", role: "Manager" })}`);
+    expect(managerResponse.status).toBe(200);
+
+    const executiveResponse = await request(app)
+      .get("/employee/executive")
+      .set("Authorization", `Bearer ${signTestJwt({ sub: "exec-1", email: "exec@example.com", role: "Executive" })}`);
+    expect(executiveResponse.status).toBe(200);
+
+    const adminResponse = await request(app)
+      .get("/admin")
+      .set("Authorization", `Bearer ${signTestJwt({ sub: "admin-1", email: "admin@example.com", role: "Admin" })}`);
+    expect(adminResponse.status).toBe(200);
   });
 });

@@ -112,4 +112,133 @@ describe("PortalPage", () => {
       expect(push).toHaveBeenCalledWith("/portal/ticket-created");
     });
   }, 10_000);
+
+  it("redirects guests to login and non-customers to their landing route", async () => {
+    const { getStoredAccessToken, me } = await import("@/lib/auth");
+
+    vi.mocked(getStoredAccessToken).mockReturnValueOnce(null).mockReturnValueOnce("token-1");
+    vi.mocked(me).mockResolvedValueOnce({
+      sub: "manager-1",
+      email: "manager@example.com",
+      role: "Manager",
+      name: "Manager One",
+    });
+
+    render(<PortalPage />);
+
+    await waitFor(() => {
+      expect(replace).toHaveBeenCalledWith("/login");
+    });
+
+    render(<PortalPage />);
+
+    await waitFor(() => {
+      expect(replace).toHaveBeenCalledWith("/employee/csr");
+    });
+  });
+
+  it("shows an error state when ticket loading fails", async () => {
+    const { me } = await import("@/lib/auth");
+    const { fetchPortalTickets } = await import("@/lib/customerPortal");
+
+    vi.mocked(me).mockResolvedValue({
+      sub: "customer-1",
+      email: "customer@example.com",
+      role: "Customer",
+      name: "Customer One",
+    });
+    vi.mocked(fetchPortalTickets).mockRejectedValue(new Error("Could not load tickets."));
+
+    render(<PortalPage />);
+
+    await waitFor(() => {
+      expect(screen.getByText("Could not load tickets.")).toBeInTheDocument();
+    });
+  });
+
+  it("redirects to login when there is no stored token", async () => {
+    const { getStoredAccessToken } = await import("@/lib/auth");
+
+    vi.mocked(getStoredAccessToken).mockReturnValueOnce(null);
+
+    render(<PortalPage />);
+
+    await waitFor(() => {
+      expect(replace).toHaveBeenCalledWith("/login");
+    });
+  });
+
+  it("surfaces refresh failures", async () => {
+    const { me } = await import("@/lib/auth");
+    const { fetchPortalTickets } = await import("@/lib/customerPortal");
+
+    vi.mocked(me).mockResolvedValue({
+      sub: "customer-1",
+      email: "customer@example.com",
+      role: "Customer",
+      name: "Customer One",
+    });
+    let fetchCount = 0;
+    vi.mocked(fetchPortalTickets).mockImplementation(async () => {
+      fetchCount += 1;
+      if (fetchCount <= 2) {
+        return {
+          customer: { id: "customer-1", company: "Acme" },
+          tickets: [],
+        };
+      }
+
+      throw new Error("Refresh failed");
+    });
+
+    render(<PortalPage />);
+
+    await waitFor(() => {
+      expect(screen.getByText("No tickets yet")).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Refresh" }));
+
+    await waitFor(() => {
+      expect(screen.getAllByText("Refresh failed").length).toBeGreaterThan(0);
+    });
+  });
+
+  it("surfaces create failures", async () => {
+    const { me } = await import("@/lib/auth");
+    const { createPortalTicket, fetchPortalTickets } = await import("@/lib/customerPortal");
+
+    vi.mocked(me).mockResolvedValue({
+      sub: "customer-1",
+      email: "customer@example.com",
+      role: "Customer",
+      name: "Customer One",
+    });
+    vi.mocked(fetchPortalTickets).mockResolvedValue({
+      customer: { id: "customer-1", company: "Acme" },
+      tickets: [],
+    });
+    vi.mocked(createPortalTicket).mockRejectedValueOnce(new Error("Create failed"));
+
+    render(<PortalPage />);
+
+    await waitFor(() => {
+      expect(screen.getByText("No tickets yet")).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getAllByRole("button", { name: "Create ticket" })[0] as HTMLElement);
+    const dialog = await screen.findByRole("dialog");
+    const dialogScope = within(dialog);
+    fireEvent.change(dialogScope.getByRole("textbox", { name: /subject/i }), {
+      target: { value: "Created ticket" },
+    });
+    fireEvent.change(dialogScope.getByRole("textbox", { name: /description/i }), {
+      target: { value: "Need help" },
+    });
+    fireEvent.click(dialogScope.getByRole("button", { name: "Create ticket" }));
+
+    await waitFor(() => {
+      expect(screen.getByText("Create failed")).toBeInTheDocument();
+    });
+  });
 });

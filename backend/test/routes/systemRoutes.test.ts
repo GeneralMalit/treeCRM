@@ -64,6 +64,26 @@ describe("systemRoutes", () => {
     const timeoutResponse = await request(timeoutApp).get("/health/supabase");
     expect(timeoutResponse.status).toBe(500);
     expect(timeoutResponse.body.message).toBe("Supabase health check timed out.");
+
+    const upstreamErrorApp = await loadSystemRouter({
+      fetchImpl: vi.fn().mockRejectedValue(new Error("fetch failed")),
+    });
+    const upstreamErrorResponse = await request(upstreamErrorApp).get("/health/supabase");
+    expect(upstreamErrorResponse.status).toBe(500);
+    expect(upstreamErrorResponse.body.message).toBe("Failed to reach Supabase endpoint.");
+  });
+
+  it("reports unexpected upstream statuses", async () => {
+    const app = await loadSystemRouter({
+      fetchImpl: vi.fn().mockResolvedValue({ ok: false, status: 500 }),
+    });
+
+    const response = await request(app).get("/health/supabase");
+    expect(response.status).toBe(500);
+    expect(response.body.message).toBe(
+      "Supabase reachable, but health probe returned an unexpected status.",
+    );
+    expect(response.body.httpStatus).toBe(500);
   });
 
   it("reports successful supabase reachability", async () => {
