@@ -35,6 +35,7 @@ import {
 } from "@/lib/realtime";
 import { ShellPageHeader } from "@/components/shell/ShellPageHeader";
 import { ShellSection } from "@/components/shell/ShellSection";
+import { AuthenticatedShell } from "@/components/shell/AuthenticatedShell";
 
 type ViewState =
   | { status: "loading" }
@@ -346,7 +347,8 @@ export default function PortalTicketDetailPage() {
   }, [state]);
 
   return (
-    <Stack spacing={3}>
+    <AuthenticatedShell role="Customer" title="Customer portal" subtitle="Ticket detail">
+      <Stack spacing={3}>
       <ShellPageHeader
         title={state.status === "ready" ? state.data.detail.ticket.subject : "Ticket detail"}
         description="Conversation stays primary. Status, timeline, and support metadata live in the side panel."
@@ -579,6 +581,7 @@ export default function PortalTicketDetailPage() {
           </ShellSection>
         </Box>
       ) : null}
-    </Stack>
+      </Stack>
+    </AuthenticatedShell>
   );
 }

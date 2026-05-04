@@ -8,7 +8,6 @@ import {
   Checkbox,
   Chip,
   CircularProgress,
-  Container,
   Divider,
   FormControl,
   InputLabel,
@@ -1747,7 +1746,7 @@ export function EmployeeTreeWorkspace({
   };
 
   return (
-    <Container maxWidth="xl" sx={{ py: 4 }}>
+    <Box sx={{ width: "100%" }}>
       <Stack spacing={3}>
         <Box sx={{ display: "flex", flexDirection: { xs: "column", md: "row" }, justifyContent: "space-between", alignItems: { xs: "flex-start", md: "flex-end" }, gap: 2 }}>
           <Box>
@@ -1761,7 +1760,7 @@ export function EmployeeTreeWorkspace({
             {state.status === "ready" && (
               <Typography variant="body2" sx={{ mt: 1, color: "#475569", fontWeight: 500 }}>
                 Signed in as {state.data.user.name ? `${state.data.user.name} (${state.data.user.email})` : state.data.user.email}
-                {" • "}Role: {state.data.user.role}
+                {" | "}Role: {state.data.user.role}
               </Typography>
             )}
           </Box>
@@ -1770,7 +1769,7 @@ export function EmployeeTreeWorkspace({
 
         <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", lg: "1.4fr 1fr" }, gap: 3 }}>
           <Stack spacing={3}>
-            <Paper variant="outlined" sx={{ p: 4, borderRadius: 3, borderColor: "rgba(15, 23, 42, 0.08)", boxShadow: "0 1px 3px rgba(15, 23, 42, 0.02)" }}>
+            <Paper variant="outlined" sx={{ p: { xs: 2, lg: 3 }, borderRadius: 2, borderColor: "rgba(100, 116, 139, 0.20)", boxShadow: "0 14px 36px rgba(15, 23, 42, 0.04)", bgcolor: "#ffffff" }}>
             {state.status === "loading" && <Typography color="text.secondary">Loading tree data...</Typography>}
 
             {state.status === "ready" && state.data.tree.data.length === 0 && (
@@ -1794,7 +1793,7 @@ export function EmployeeTreeWorkspace({
           </Stack>
 
           <Stack spacing={3}>
-            <Paper variant="outlined" sx={{ p: 4, borderRadius: 3, borderColor: "rgba(15, 23, 42, 0.08)", boxShadow: "0 1px 3px rgba(15, 23, 42, 0.02)" }}>
+            <Paper variant="outlined" sx={{ p: { xs: 2, lg: 3 }, borderRadius: 2, borderColor: "rgba(100, 116, 139, 0.20)", boxShadow: "0 14px 36px rgba(15, 23, 42, 0.04)", bgcolor: "#ffffff" }}>
               <Typography variant="h6">Details Panel</Typography>
               <Typography variant="body2" color="text.secondary" sx={{ mb: 1.5 }}>
                 Click any graph node to inspect details.
@@ -1806,6 +1805,6 @@ export function EmployeeTreeWorkspace({
           </Stack>
         </Box>
       </Stack>
-    </Container>
+    </Box>
   );
 }

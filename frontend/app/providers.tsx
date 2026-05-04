@@ -11,11 +11,19 @@ const theme = createTheme({
   palette: {
     mode: "light",
     primary: {
-      main: "#166534",
-      dark: "#14532d",
+      main: "#0f6b45",
+      dark: "#0f5132",
+      light: "#dff5ec",
+      contrastText: "#ffffff",
     },
     secondary: {
-      main: "#0f172a",
+      main: "#0f766e",
+    },
+    info: {
+      main: "#0284c7",
+    },
+    warning: {
+      main: "#b7791f",
     },
     background: {
       default: "#f8fafc",
@@ -28,21 +36,25 @@ const theme = createTheme({
     divider: "rgba(148, 163, 184, 0.35)",
   },
   shape: {
-    borderRadius: 2,
+    borderRadius: 8,
   },
   typography: {
     fontFamily: "var(--font-geist-sans)",
     h1: {
-      fontWeight: 800,
+      fontWeight: 900,
+      letterSpacing: 0,
     },
     h2: {
-      fontWeight: 800,
+      fontWeight: 850,
+      letterSpacing: 0,
     },
     h3: {
-      fontWeight: 750,
+      fontWeight: 800,
+      letterSpacing: 0,
     },
     h4: {
-      fontWeight: 750,
+      fontWeight: 800,
+      letterSpacing: 0,
     },
     h5: {
       fontWeight: 700,
@@ -59,7 +71,7 @@ const theme = createTheme({
     MuiCssBaseline: {
       styleOverrides: {
         body: {
-          backgroundColor: "#f8fafc",
+          backgroundColor: "#f6f8fb",
           color: "#0f172a",
           fontFamily: "var(--font-geist-sans)",
         },
@@ -69,7 +81,7 @@ const theme = createTheme({
       styleOverrides: {
         root: {
           backgroundImage: "none",
-          borderColor: "rgba(148, 163, 184, 0.35)",
+          borderColor: "rgba(100, 116, 139, 0.22)",
         },
         outlined: {
           boxShadow: "none",
@@ -83,8 +95,8 @@ const theme = createTheme({
       styleOverrides: {
         root: {
           borderRadius: 8,
-          border: "1px solid rgba(148, 163, 184, 0.35)",
-          boxShadow: "none",
+          border: "1px solid rgba(100, 116, 139, 0.22)",
+          boxShadow: "0 12px 36px rgba(15, 23, 42, 0.05)",
           backgroundImage: "none",
         },
       },
@@ -96,9 +108,23 @@ const theme = createTheme({
           boxShadow: "none",
           paddingLeft: "1rem",
           paddingRight: "1rem",
+          minHeight: 38,
         },
         contained: {
           boxShadow: "none",
+          backgroundColor: "#0f6b45",
+          "&:hover": {
+            backgroundColor: "#0f5132",
+            boxShadow: "none",
+          },
+        },
+        outlined: {
+          borderColor: "rgba(15, 23, 42, 0.18)",
+          color: "#0f172a",
+          "&:hover": {
+            borderColor: "rgba(15, 23, 42, 0.36)",
+            backgroundColor: "rgba(15, 107, 69, 0.05)",
+          },
         },
       },
     },
@@ -107,6 +133,39 @@ const theme = createTheme({
         root: {
           borderRadius: 8,
           backgroundColor: "#ffffff",
+          "& fieldset": {
+            borderColor: "rgba(100, 116, 139, 0.28)",
+          },
+        },
+      },
+    },
+    MuiTableCell: {
+      styleOverrides: {
+        head: {
+          color: "#475569",
+          fontSize: "0.74rem",
+          fontWeight: 800,
+          letterSpacing: 0,
+          textTransform: "uppercase",
+          backgroundColor: "#f8fafc",
+        },
+        root: {
+          borderBottomColor: "rgba(100, 116, 139, 0.18)",
+        },
+      },
+    },
+    MuiChip: {
+      styleOverrides: {
+        root: {
+          borderRadius: 7,
+          fontWeight: 700,
+        },
+      },
+    },
+    MuiDialog: {
+      styleOverrides: {
+        paper: {
+          borderRadius: 10,
         },
       },
     },

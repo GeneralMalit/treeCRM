@@ -43,11 +43,11 @@ export function ShellTopbar({ title, subtitle, onMenuClick, actions }: ShellTopb
       sx={{
         backgroundColor: "rgba(255,255,255,0.92)",
         color: "text.primary",
-        borderBottom: "1px solid rgba(148, 163, 184, 0.28)",
+        borderBottom: "1px solid rgba(100, 116, 139, 0.18)",
         backdropFilter: "blur(16px)",
       }}
     >
-      <Toolbar sx={{ minHeight: 64, gap: 2 }}>
+      <Toolbar sx={{ minHeight: 66, gap: 2, px: { xs: 2, sm: 3 } }}>
         {onMenuClick ? (
           <IconButton edge="start" onClick={onMenuClick} sx={{ display: { md: "none" } }}>
             <Box
@@ -77,7 +77,7 @@ export function ShellTopbar({ title, subtitle, onMenuClick, actions }: ShellTopb
           </IconButton>
         ) : null}
         <Stack spacing={0.1} sx={{ minWidth: 0, flex: 1 }}>
-          <Typography variant="subtitle1" fontWeight={800} sx={{ lineHeight: 1.15, letterSpacing: "-0.02em" }}>
+          <Typography variant="subtitle1" fontWeight={900} sx={{ lineHeight: 1.15, letterSpacing: 0 }}>
             {title}
           </Typography>
           {subtitle ? (
@@ -92,7 +92,7 @@ export function ShellTopbar({ title, subtitle, onMenuClick, actions }: ShellTopb
           size="small"
           onClick={() => void handleLogout()}
           disabled={isLoggingOut}
-          sx={{ ml: 1 }}
+          sx={{ ml: 1, whiteSpace: "nowrap" }}
         >
           {isLoggingOut ? "Logging out..." : "Logout"}
         </Button>

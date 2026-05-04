@@ -15,15 +15,15 @@ export function ShellPageHeader({ title, description, actions }: ShellPageHeader
         flexWrap: "wrap",
         alignItems: "flex-start",
         justifyContent: "space-between",
-        gap: 2,
+        gap: 2.2,
       }}
       >
       <Stack spacing={0.75} sx={{ minWidth: 0 }}>
-        <Typography component="h1" variant="h4" fontWeight={800} sx={{ letterSpacing: "-0.03em" }}>
+        <Typography component="h1" variant="h4" fontWeight={900} sx={{ letterSpacing: 0, color: "#0f172a" }}>
           {title}
         </Typography>
         {description ? (
-          <Typography variant="body2" color="text.secondary" sx={{ maxWidth: 720 }}>
+          <Typography variant="body2" color="text.secondary" sx={{ maxWidth: 760, lineHeight: 1.65 }}>
             {description}
           </Typography>
         ) : null}

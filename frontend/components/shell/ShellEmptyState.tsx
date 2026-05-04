@@ -13,10 +13,10 @@ export function ShellEmptyState({ title, description, actionLabel, onAction }: S
       variant="outlined"
       sx={{
         p: 3,
-        borderRadius: 3,
-        borderColor: "rgba(148, 163, 184, 0.28)",
-        boxShadow: "none",
-        background: "linear-gradient(180deg, rgba(248,250,252,0.96), rgba(255,255,255,0.96))",
+        borderRadius: 2,
+        borderColor: "rgba(100, 116, 139, 0.20)",
+        boxShadow: "0 14px 32px rgba(15, 23, 42, 0.04)",
+        background: "linear-gradient(180deg, rgba(248,250,252,0.96), rgba(255,255,255,0.98))",
       }}
     >
       <Stack spacing={1.5}>

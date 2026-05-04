@@ -25,6 +25,7 @@ import {
   Typography,
 } from "@mui/material";
 import { useRouter } from "next/navigation";
+import { AuthenticatedShell } from "@/components/shell/AuthenticatedShell";
 import { ShellEmptyState } from "@/components/shell/ShellEmptyState";
 import { ShellPageHeader } from "@/components/shell/ShellPageHeader";
 import { ShellSection } from "@/components/shell/ShellSection";
@@ -241,7 +242,8 @@ export default function PortalPage() {
   }, [state, ticketList]);
 
   return (
-    <Stack spacing={3}>
+    <AuthenticatedShell role="Customer" title="Customer portal" subtitle="Tickets">
+      <Stack spacing={3}>
       <ShellPageHeader
         title="Tickets"
         description="Your ticket list stays in focus. Open any item to continue the conversation."
@@ -399,6 +401,7 @@ export default function PortalPage() {
           </Button>
         </DialogActions>
       </Dialog>
-    </Stack>
+      </Stack>
+    </AuthenticatedShell>
   );
 }

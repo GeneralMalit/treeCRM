@@ -14,15 +14,17 @@ import {
   ToggleButtonGroup,
   Typography,
 } from "@mui/material";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { BrandMark } from "@/components/BrandMark";
 import { getLandingRoute, login, register, setStoredAccessToken } from "@/lib/auth";
 
 type Mode = "login" | "register";
 
 const featurePoints = [
-  "Role-based entry points for admin, employee, and portal workflows.",
-  "Compact registration for customer accounts only.",
-  "One shell, fewer dead ends, and faster navigation once signed in.",
+  "One credential routes each signed-in user to the correct TreeCRM workspace.",
+  "Customer registration stays public; employee and admin accounts are provisioned by admins.",
+  "Portal tickets, internal messages, and operations views share the same product shell.",
 ];
 
 export default function LoginPage() {
@@ -87,160 +89,172 @@ export default function LoginPage() {
   };
 
   return (
-    <Container maxWidth="lg" sx={{ py: { xs: 2, md: 6 } }}>
-      <Paper
-        variant="outlined"
-        sx={{
-          overflow: "hidden",
-          borderRadius: 3,
-          borderColor: "rgba(148, 163, 184, 0.35)",
-          boxShadow: "0 24px 60px rgba(15, 23, 42, 0.08)",
-          display: "grid",
-          gridTemplateColumns: { xs: "1fr", md: "0.92fr 1.08fr" },
-          minHeight: { md: 620 },
-        }}
-      >
-        <Box
-          sx={{
-            p: { xs: 3, md: 4 },
-            color: "#e2e8f0",
-            background:
-              "radial-gradient(circle at top left, rgba(34, 197, 94, 0.22), transparent 42%), linear-gradient(160deg, #0f172a 0%, #111827 100%)",
-            display: "flex",
-            flexDirection: "column",
-            justifyContent: "space-between",
-            gap: 4,
-          }}
-        >
-          <Stack spacing={2}>
+    <Box
+      sx={{
+        minHeight: "100vh",
+        background:
+          "linear-gradient(180deg, #ffffff 0%, #f8fafc 42%, #eef7f3 100%)",
+      }}
+    >
+      <Container maxWidth="lg" sx={{ py: { xs: 3, md: 6 } }}>
+        <Stack spacing={3}>
+          <BrandMark />
+
+          <Paper
+            variant="outlined"
+            sx={{
+              overflow: "hidden",
+              borderRadius: 2,
+              borderColor: "rgba(100, 116, 139, 0.22)",
+              boxShadow: "0 28px 90px rgba(15, 23, 42, 0.12)",
+              display: "grid",
+              gridTemplateColumns: { xs: "1fr", md: "0.88fr 1.12fr" },
+              minHeight: { md: 640 },
+            }}
+          >
             <Box
               sx={{
-                display: "inline-flex",
-                alignSelf: "flex-start",
-                px: 1.25,
-                py: 0.5,
-                borderRadius: 999,
-                bgcolor: "rgba(255, 255, 255, 0.08)",
-                border: "1px solid rgba(255, 255, 255, 0.12)",
+                p: { xs: 3, md: 4 },
+                color: "#ffffff",
+                background: "linear-gradient(160deg, #0f5132 0%, #0f766e 100%)",
+                display: "flex",
+                flexDirection: "column",
+                justifyContent: "space-between",
+                gap: 4,
               }}
             >
-              <Typography variant="caption" sx={{ letterSpacing: "0.12em", textTransform: "uppercase" }}>
-                TreeCRM
-              </Typography>
-            </Box>
-            <Stack spacing={1}>
-              <Typography variant="h3" component="h1" fontWeight={800} sx={{ letterSpacing: "-0.03em" }}>
-                Sign in to the workspace
-              </Typography>
-              <Typography variant="body1" sx={{ color: "#cbd5e1", maxWidth: 460 }}>
-                Keep the flow tight. Use one account to move into the right role, ticket list, or customer portal.
-              </Typography>
-            </Stack>
-          </Stack>
-
-          <Stack spacing={1.5}>
-            {featurePoints.map((point) => (
-              <Box
-                key={point}
-                sx={{
-                  display: "flex",
-                  gap: 1.25,
-                  alignItems: "flex-start",
-                  p: 1.5,
-                  borderRadius: 2,
-                  bgcolor: "rgba(255, 255, 255, 0.05)",
-                }}
-              >
-                <Box sx={{ mt: 0.7, width: 8, height: 8, borderRadius: "50%", bgcolor: "#22c55e", flexShrink: 0 }} />
-                <Typography variant="body2" sx={{ color: "#e2e8f0" }}>
-                  {point}
+              <Stack spacing={2.2}>
+                <Typography variant="h3" component="h1" sx={{ color: "#ffffff", lineHeight: 1.05 }}>
+                  Sign in to the workspace
                 </Typography>
-              </Box>
-            ))}
-          </Stack>
-        </Box>
+                <Typography sx={{ color: "rgba(255,255,255,0.78)", maxWidth: 460, lineHeight: 1.7 }}>
+                  Move from the public landing page into the right support surface: customer portal,
+                  employee workspace, manager overview, executive view, or admin controls.
+                </Typography>
+              </Stack>
 
-        <Box
-          sx={{
-            p: { xs: 3, sm: 4, md: 5 },
-            bgcolor: "#ffffff",
-            display: "flex",
-            alignItems: "center",
-          }}
-        >
-          <Stack component="form" spacing={2.25} onSubmit={handleSubmit} sx={{ width: "100%" }}>
-            <Stack spacing={0.75}>
-              <Typography variant="h4" fontWeight={800} sx={{ letterSpacing: "-0.02em" }}>
-                {mode === "login" ? "Login" : "Create account"}
-              </Typography>
-              <Typography color="text.secondary">
-                {mode === "login"
-                  ? "Sign in with your existing TreeCRM credentials."
-                  : "Create a customer account to start a support conversation."}
-              </Typography>
-            </Stack>
+              <Stack spacing={1.2}>
+                {featurePoints.map((point) => (
+                  <Box
+                    key={point}
+                    sx={{
+                      display: "flex",
+                      gap: 1.25,
+                      alignItems: "flex-start",
+                      p: 1.4,
+                      borderRadius: 1.2,
+                      bgcolor: "rgba(255, 255, 255, 0.08)",
+                      border: "1px solid rgba(255, 255, 255, 0.12)",
+                    }}
+                  >
+                    <Box sx={{ mt: 0.7, width: 8, height: 8, borderRadius: "50%", bgcolor: "#8ee7ce", flexShrink: 0 }} />
+                    <Typography variant="body2" sx={{ color: "rgba(255,255,255,0.88)", lineHeight: 1.6 }}>
+                      {point}
+                    </Typography>
+                  </Box>
+                ))}
+              </Stack>
+            </Box>
 
-            <ToggleButtonGroup
-              fullWidth
-              exclusive
-              color="primary"
-              value={mode}
-              onChange={handleModeChange}
+            <Box
               sx={{
-                "& .MuiToggleButton-root": {
-                  py: 1,
-                  textTransform: "none",
-                  borderColor: "rgba(148, 163, 184, 0.45)",
-                },
+                p: { xs: 3, sm: 4, md: 5 },
+                bgcolor: "#ffffff",
+                display: "flex",
+                alignItems: "center",
               }}
             >
-              <ToggleButton value="login">Login</ToggleButton>
-              <ToggleButton value="register">Register</ToggleButton>
-            </ToggleButtonGroup>
+              <Stack component="form" spacing={2.2} onSubmit={handleSubmit} sx={{ width: "100%" }}>
+                <Stack spacing={0.75}>
+                  <Typography variant="h4" fontWeight={900}>
+                    {mode === "login" ? "Welcome back" : "Create customer account"}
+                  </Typography>
+                  <Typography color="text.secondary" sx={{ lineHeight: 1.6 }}>
+                    {mode === "login"
+                      ? "Sign in with your existing TreeCRM credentials."
+                      : "Create a customer account to start and track support conversations."}
+                  </Typography>
+                </Stack>
 
-            {mode === "register" ? (
-              <TextField
-                label="Name (optional)"
-                value={name}
-                onChange={(event) => setName(event.target.value)}
-                autoComplete="name"
-              />
-            ) : null}
+                <ToggleButtonGroup
+                  fullWidth
+                  exclusive
+                  color="primary"
+                  value={mode}
+                  onChange={handleModeChange}
+                  sx={{
+                    p: 0.45,
+                    borderRadius: 1.4,
+                    bgcolor: "#f8fafc",
+                    border: "1px solid rgba(100, 116, 139, 0.18)",
+                    "& .MuiToggleButton-root": {
+                      py: 0.9,
+                      border: 0,
+                      borderRadius: 1,
+                      textTransform: "none",
+                      fontWeight: 800,
+                      "&.Mui-selected": {
+                        bgcolor: "#ffffff",
+                        color: "#0f5132",
+                        boxShadow: "0 6px 18px rgba(15, 23, 42, 0.08)",
+                      },
+                    },
+                  }}
+                >
+                  <ToggleButton value="login">Sign in</ToggleButton>
+                  <ToggleButton value="register">Register</ToggleButton>
+                </ToggleButtonGroup>
 
-            <TextField
-              label="Email"
-              type="email"
-              value={email}
-              onChange={(event) => setEmail(event.target.value)}
-              autoComplete="email"
-              required
-            />
+                {mode === "register" ? (
+                  <TextField
+                    label="Name (optional)"
+                    value={name}
+                    onChange={(event) => setName(event.target.value)}
+                    autoComplete="name"
+                  />
+                ) : null}
 
-            <TextField
-              label="Password"
-              type="password"
-              value={password}
-              onChange={(event) => setPassword(event.target.value)}
-              autoComplete={mode === "login" ? "current-password" : "new-password"}
-              helperText="Minimum 8 characters"
-              required
-            />
+                <TextField
+                  label="Email"
+                  type="email"
+                  value={email}
+                  onChange={(event) => setEmail(event.target.value)}
+                  autoComplete="email"
+                  required
+                />
 
-            {message ? <Alert severity="info">{message}</Alert> : null}
-            {error ? <Alert severity="error">{error}</Alert> : null}
+                <TextField
+                  label="Password"
+                  type="password"
+                  value={password}
+                  onChange={(event) => setPassword(event.target.value)}
+                  autoComplete={mode === "login" ? "current-password" : "new-password"}
+                  helperText="Minimum 8 characters"
+                  required
+                />
 
-            <Button type="submit" variant="contained" size="large" disabled={isSubmitting}>
-              {isSubmitting ? "Submitting..." : mode === "login" ? "Login" : "Register"}
-            </Button>
+                {message ? <Alert severity="info">{message}</Alert> : null}
+                {error ? <Alert severity="error">{error}</Alert> : null}
 
-            <Divider sx={{ my: 0.5 }} />
+                <Button type="submit" variant="contained" size="large" disabled={isSubmitting}>
+                  {isSubmitting ? "Submitting..." : mode === "login" ? "Sign in" : "Register"}
+                </Button>
 
-            <Typography variant="caption" color="text.secondary">
-              Customers can register here. Admin and employee accounts are provisioned separately.
-            </Typography>
-          </Stack>
-        </Box>
-      </Paper>
-    </Container>
+                <Divider sx={{ my: 0.5 }} />
+
+                <Stack spacing={0.7}>
+                  <Typography variant="caption" color="text.secondary">
+                    Customers can register here. Admin and employee accounts are provisioned separately.
+                  </Typography>
+                  <Button component={Link} href="/" variant="text" sx={{ alignSelf: "flex-start", px: 0 }}>
+                    Back to landing page
+                  </Button>
+                </Stack>
+              </Stack>
+            </Box>
+          </Paper>
+        </Stack>
+      </Container>
+    </Box>
   );
 }

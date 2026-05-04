@@ -16,7 +16,7 @@ const geistMono = Geist_Mono({
 
 export const metadata: Metadata = {
   title: "TreeCRM",
-  description: "TreeCRM frontend shell",
+  description: "Production support operations CRM for tickets, teams, and customer conversations.",
 };
 
 export default function RootLayout({

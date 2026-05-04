@@ -6,6 +6,7 @@ const replace = vi.fn();
 const push = vi.fn();
 
 vi.mock("next/navigation", () => ({
+  usePathname: () => "/portal",
   useRouter: () => ({
     replace,
     push,

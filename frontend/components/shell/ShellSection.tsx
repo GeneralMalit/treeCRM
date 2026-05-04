@@ -9,10 +9,11 @@ export function ShellSection({ children, sx, ...props }: ShellSectionProps) {
       {...props}
       sx={{
         p: { xs: 2, sm: 2.5, lg: 3 },
-        borderColor: "rgba(148, 163, 184, 0.28)",
-        boxShadow: "none",
-        backgroundImage: "linear-gradient(180deg, rgba(255,255,255,0.9), rgba(248,250,252,0.95))",
-        borderRadius: 3,
+        borderColor: "rgba(100, 116, 139, 0.20)",
+        boxShadow: "0 14px 36px rgba(15, 23, 42, 0.04)",
+        backgroundImage: "none",
+        backgroundColor: "#ffffff",
+        borderRadius: 2,
         ...sx,
       }}
     >

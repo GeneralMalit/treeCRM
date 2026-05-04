@@ -4,6 +4,7 @@ import Link from "next/link";
 import { Box, Button, Divider, Drawer, Stack, Typography } from "@mui/material";
 import type { Role } from "@/lib/roles";
 import { ROLE_SHELL_NAV, isShellNavActive } from "@/lib/shellNav";
+import { BrandMark } from "@/components/BrandMark";
 
 type ShellSidebarProps = {
   role: Role;
@@ -16,19 +17,29 @@ export function ShellSidebar({ role, open, onClose, currentPath }: ShellSidebarP
   const navItems = ROLE_SHELL_NAV[role];
 
   const content = (
-    <Stack spacing={2} sx={{ width: 264, p: 2.5, height: "100%" }}>
-      <Box>
-        <Typography variant="h6" fontWeight={800} sx={{ letterSpacing: "-0.03em" }}>
-          TreeCRM
-        </Typography>
-        <Typography variant="body2" color="text.secondary">
-          {role}
-        </Typography>
-      </Box>
+    <Stack spacing={2.25} sx={{ width: 276, p: 2.25, height: "100%" }}>
+      <Stack spacing={1}>
+        <BrandMark compact />
+        <Box
+          sx={{
+            alignSelf: "flex-start",
+            px: 1,
+            py: 0.45,
+            borderRadius: 1,
+            color: "#0f5132",
+            bgcolor: "#e8f6ef",
+            border: "1px solid rgba(15, 107, 69, 0.16)",
+          }}
+        >
+          <Typography variant="caption" fontWeight={900}>
+            {role} workspace
+          </Typography>
+        </Box>
+      </Stack>
 
       <Divider />
 
-      <Stack spacing={1}>
+      <Stack spacing={0.55}>
         {navItems.map((item) => {
           const active = isShellNavActive(currentPath, item.href);
           return (
@@ -41,10 +52,15 @@ export function ShellSidebar({ role, open, onClose, currentPath }: ShellSidebarP
               color={active ? "primary" : "inherit"}
               sx={{
                 justifyContent: "flex-start",
-                borderRadius: 2,
+                borderRadius: 1.25,
                 textTransform: "none",
-                px: 1.5,
-                py: 1,
+                px: 1.35,
+                py: 1.05,
+                color: active ? "#ffffff" : "#334155",
+                fontWeight: active ? 900 : 760,
+                "&:hover": {
+                  bgcolor: active ? "#0f5132" : "rgba(15, 107, 69, 0.06)",
+                },
               }}
             >
               {item.label}
@@ -60,15 +76,21 @@ export function ShellSidebar({ role, open, onClose, currentPath }: ShellSidebarP
       <Box
         sx={{
           display: { xs: "none", md: "block" },
-          width: 264,
+          width: 276,
           flexShrink: 0,
-          borderRight: "1px solid rgba(148, 163, 184, 0.28)",
-          backgroundColor: "rgba(248, 250, 252, 0.92)",
+          borderRight: "1px solid rgba(100, 116, 139, 0.18)",
+          backgroundColor: "#ffffff",
         }}
       >
         {content}
       </Box>
-      <Drawer open={open} onClose={onClose} variant="temporary">
+      <Drawer
+        open={open}
+        onClose={onClose}
+        variant="temporary"
+        ModalProps={{ keepMounted: true }}
+        PaperProps={{ sx: { borderRight: "1px solid rgba(100, 116, 139, 0.18)" } }}
+      >
         {content}
       </Drawer>
     </>

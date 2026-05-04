@@ -44,7 +44,7 @@ describe("LoginPage", () => {
       target: { value: "csr@example.com" },
     });
     fireEvent.change(screen.getByLabelText(/password/i), { target: { value: "password123" } });
-    fireEvent.click(screen.getAllByRole("button", { name: "Login" })[1] as HTMLElement);
+    fireEvent.click(screen.getAllByRole("button", { name: "Sign in" })[1] as HTMLElement);
 
     await waitFor(() => {
       expect(push).toHaveBeenCalledWith("/employee/csr");

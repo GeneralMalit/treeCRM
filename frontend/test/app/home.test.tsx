@@ -32,9 +32,16 @@ describe("HomePage", () => {
     await waitFor(() => {
       expect(screen.getByRole("heading", { name: "TreeCRM", level: 1 })).toBeInTheDocument();
     });
-    
-    const signInLinks = screen.getAllByRole("link", { name: "Sign In" });
+
+    expect(screen.getByText("Support operations, mapped clearly.")).toBeInTheDocument();
+
+    const signInLinks = screen.getAllByRole("link", { name: "Sign in" });
     expect(signInLinks.length).toBeGreaterThan(0);
+    expect(screen.getAllByRole("link", { name: "Create customer account" }).length).toBeGreaterThan(0);
+    expect(screen.queryByRole("link", { name: /CSR/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: /Manager/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: /Executive/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: /Admin/i })).not.toBeInTheDocument();
     expect(replace).not.toHaveBeenCalled();
   });
 

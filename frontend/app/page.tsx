@@ -1,10 +1,133 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Box, Button, Card, CardContent, Container, Stack, Typography } from "@mui/material";
 import Link from "next/link";
+import { Box, Button, Container, Paper, Stack, Typography } from "@mui/material";
 import { useRouter } from "next/navigation";
+import { BrandMark } from "@/components/BrandMark";
 import { clearStoredAccessToken, getLandingRoute, getStoredAccessToken, me } from "@/lib/auth";
+
+const navItems = [
+  { label: "Product", href: "#product" },
+  { label: "Portal", href: "#portal" },
+  { label: "Operations", href: "#operations" },
+  { label: "Security", href: "#security" },
+];
+
+const workflowSteps = [
+  { label: "Customer portal", detail: "Ticket created with category, priority, and conversation context." },
+  { label: "CSR workspace", detail: "Ownership, tags, status, notes, and customer chat stay beside the case." },
+  { label: "Manager review", detail: "Escalations and reassignment decisions move through the same workspace." },
+];
+
+const ticketRows = [
+  ["Login issue", "Open", "High", "Account Access"],
+  ["Billing question", "In Progress", "Medium", "Billing"],
+  ["Feature request", "Resolved", "Low", "Product"],
+];
+
+function ProductWindow({ children, title }: { children: React.ReactNode; title: string }) {
+  return (
+    <Paper
+      variant="outlined"
+      sx={{
+        overflow: "hidden",
+        borderRadius: 2,
+        borderColor: "rgba(100, 116, 139, 0.22)",
+        boxShadow: "0 24px 70px rgba(15, 23, 42, 0.10)",
+      }}
+    >
+      <Box
+        sx={{
+          px: 2,
+          py: 1.25,
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          borderBottom: "1px solid rgba(100, 116, 139, 0.18)",
+          bgcolor: "#ffffff",
+        }}
+      >
+        <Stack direction="row" spacing={0.7} aria-hidden>
+          {["#ef4444", "#f59e0b", "#10b981"].map((color) => (
+            <Box key={color} sx={{ width: 8, height: 8, borderRadius: "50%", bgcolor: color }} />
+          ))}
+        </Stack>
+        <Typography variant="caption" fontWeight={800} color="text.secondary">
+          {title}
+        </Typography>
+      </Box>
+      {children}
+    </Paper>
+  );
+}
+
+function TreePreview() {
+  return (
+    <Box
+      sx={{
+        position: "relative",
+        minHeight: 280,
+        borderRadius: 1.5,
+        bgcolor: "#f8fafc",
+        border: "1px solid rgba(100, 116, 139, 0.18)",
+        overflow: "hidden",
+      }}
+    >
+      <Box
+        aria-hidden
+        sx={{
+          position: "absolute",
+          inset: 0,
+          backgroundImage:
+            "linear-gradient(rgba(15,23,42,0.045) 1px, transparent 1px), linear-gradient(90deg, rgba(15,23,42,0.045) 1px, transparent 1px)",
+          backgroundSize: "36px 36px",
+        }}
+      />
+      <svg viewBox="0 0 520 280" style={{ position: "absolute", inset: 0, width: "100%", height: "100%" }}>
+        <g fill="none" stroke="#9bb8b1" strokeWidth="2">
+          <path d="M260 54 C214 95 165 112 118 146" />
+          <path d="M260 54 C306 95 360 112 408 146" />
+          <path d="M118 146 C98 184 74 206 52 232" />
+          <path d="M118 146 C146 184 180 206 210 232" />
+          <path d="M408 146 C382 184 348 206 316 232" />
+          <path d="M408 146 C434 184 462 206 488 232" />
+        </g>
+      </svg>
+      {[
+        { label: "Executive", x: "50%", y: 42, color: "#0f5132" },
+        { label: "Manager", x: "23%", y: 134, color: "#0f766e" },
+        { label: "Manager", x: "78%", y: 134, color: "#0284c7" },
+        { label: "High", x: "10%", y: 220, color: "#b7791f" },
+        { label: "Open", x: "40%", y: 220, color: "#0f6b45" },
+        { label: "Active", x: "61%", y: 220, color: "#0284c7" },
+        { label: "Resolved", x: "93%", y: 220, color: "#16a34a" },
+      ].map((node) => (
+        <Box
+          key={`${node.label}-${node.x}`}
+          sx={{
+            position: "absolute",
+            left: node.x,
+            top: node.y,
+            transform: "translateX(-50%)",
+            px: 1.2,
+            py: 0.8,
+            minWidth: 70,
+            textAlign: "center",
+            borderRadius: 1.25,
+            bgcolor: "#ffffff",
+            border: `1px solid ${node.color}`,
+            boxShadow: "0 12px 28px rgba(15, 23, 42, 0.08)",
+          }}
+        >
+          <Typography variant="caption" fontWeight={900} sx={{ color: node.color }}>
+            {node.label}
+          </Typography>
+        </Box>
+      ))}
+    </Box>
+  );
+}
 
 export default function HomePage() {
   const router = useRouter();
@@ -39,304 +162,265 @@ export default function HomePage() {
   }
 
   return (
-    <Box
-      sx={{
-        minHeight: "100%",
-        display: "flex",
-        flexDirection: "column",
-        background:
-          "radial-gradient(1300px 520px at 20% -8%, rgba(16,185,129,0.16), transparent), radial-gradient(900px 440px at 100% 0%, rgba(14,165,233,0.12), transparent), #f6f8fb",
-      }}
-    >
+    <Box sx={{ bgcolor: "#ffffff", color: "#0f172a" }}>
       <Box
         component="header"
         sx={{
-          py: 2.25,
-          px: { xs: 2, md: 4 },
-          borderBottom: "1px solid rgba(15, 23, 42, 0.10)",
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "center",
-          backgroundColor: "rgba(255,255,255,0.85)",
-          backdropFilter: "blur(8px)",
+          position: "sticky",
+          top: 0,
+          zIndex: 10,
+          borderBottom: "1px solid rgba(100, 116, 139, 0.18)",
+          bgcolor: "rgba(255,255,255,0.9)",
+          backdropFilter: "blur(18px)",
         }}
       >
-        <Box
-          component={Link}
-          href="/"
-          sx={{
-            display: "inline-flex",
-            alignItems: "center",
-            gap: 1.1,
-            textDecoration: "none",
-            "&:hover .brand-icon": { transform: "rotate(10deg) scale(1.08)" },
-            "&:hover .brand-node": { boxShadow: "0 0 0 6px rgba(20,83,45,0.12)" },
-            "&:hover .brand-text": { letterSpacing: "-0.012em" },
-          }}
-        >
-          <Box
-            className="brand-icon"
-            sx={{
-              position: "relative",
-              width: 28,
-              height: 28,
-              transition: "transform 180ms ease",
-            }}
+        <Container maxWidth="xl" sx={{ minHeight: 72, display: "flex", alignItems: "center", gap: 3 }}>
+          <BrandMark />
+          <Stack
+            component="nav"
+            direction="row"
+            spacing={0.5}
+            sx={{ display: { xs: "none", md: "flex" }, ml: 2, flex: 1 }}
           >
-            <Box sx={{ position: "absolute", left: 5, top: 12, width: 18, height: 2, backgroundColor: "#14532d" }} />
-            <Box sx={{ position: "absolute", left: 12, top: 5, width: 2, height: 18, backgroundColor: "#14532d" }} />
-            <Box
-              className="brand-node"
-              sx={{
-                position: "absolute",
-                left: 0,
-                top: 10,
-                width: 8,
-                height: 8,
-                borderRadius: "50%",
-                backgroundColor: "#10b981",
-                transition: "box-shadow 180ms ease",
-              }}
-            />
-            <Box
-              className="brand-node"
-              sx={{
-                position: "absolute",
-                left: 10,
-                top: 0,
-                width: 8,
-                height: 8,
-                borderRadius: "50%",
-                backgroundColor: "#16a34a",
-                transition: "box-shadow 180ms ease",
-              }}
-            />
-            <Box
-              className="brand-node"
-              sx={{
-                position: "absolute",
-                right: 0,
-                top: 10,
-                width: 8,
-                height: 8,
-                borderRadius: "50%",
-                backgroundColor: "#0ea5e9",
-                transition: "box-shadow 180ms ease",
-              }}
-            />
-            <Box
-              className="brand-node"
-              sx={{
-                position: "absolute",
-                left: 10,
-                bottom: 0,
-                width: 8,
-                height: 8,
-                borderRadius: "50%",
-                backgroundColor: "#14532d",
-                transition: "box-shadow 180ms ease",
-              }}
-            />
-          </Box>
-          <Typography
-            className="brand-text"
-            variant="h6"
-            fontWeight={900}
-            sx={{
-              letterSpacing: "-0.02em",
-              color: "#14532d",
-              fontFamily: "var(--font-geist-sans)",
-              transition: "letter-spacing 180ms ease",
-            }}
-          >
-            TreeCRM
-          </Typography>
-        </Box>
-        <Stack direction="row" spacing={2} alignItems="center">
-          <Button component={Link} href="/login" variant="text" sx={{ color: "#0f172a", fontWeight: 600 }}>
-            Sign In
-          </Button>
-          <Button
-            component={Link}
-            href="/login?mode=register"
-            variant="contained"
-            size="small"
-            disableElevation
-            sx={{
-              backgroundColor: "#166534",
-              fontWeight: 700,
-              "&:hover": { backgroundColor: "#14532d" },
-            }}
-          >
-            Get Started
-          </Button>
-        </Stack>
+            {navItems.map((item) => (
+              <Button key={item.href} component="a" href={item.href} variant="text" color="inherit">
+                {item.label}
+              </Button>
+            ))}
+          </Stack>
+          <Stack direction="row" spacing={1} sx={{ ml: "auto" }}>
+            <Button component={Link} href="/login" variant="outlined">
+              Sign in
+            </Button>
+            <Button component={Link} href="/login?mode=register" variant="contained" sx={{ display: { xs: "none", sm: "inline-flex" } }}>
+              Create customer account
+            </Button>
+          </Stack>
+        </Container>
       </Box>
 
-      <Box component="main" sx={{ flexGrow: 1 }}>
-        <Container maxWidth="lg" sx={{ pt: { xs: 8, md: 12 }, pb: { xs: 8, md: 10 } }}>
-          <Stack spacing={4} alignItems="center" textAlign="center" sx={{ maxWidth: 920, mx: "auto" }}>
-            <Typography
-              variant="h2"
-              component="h1"
-              fontWeight={900}
-              sx={{
-                fontSize: { xs: "2.3rem", sm: "3.2rem", md: "4rem" },
-                lineHeight: { xs: 1.05, md: 1.02 },
-                letterSpacing: "-0.02em",
-                color: "#14532d",
-              }}
-            >
-              TreeCRM
-            </Typography>
-            <Typography
-              variant="h4"
-              component="p"
-              sx={{
-                maxWidth: 860,
-                color: "#0f172a",
-                fontWeight: 760,
-                lineHeight: 1.2,
-                letterSpacing: "-0.02em",
-                fontSize: { xs: "1.45rem", sm: "1.8rem", md: "2.2rem" },
-              }}
-            >
-              Turn ticket chaos into clear, fast resolution.
-            </Typography>
-            <Typography
-              variant="h6"
-              component="p"
-              sx={{
-                maxWidth: 760,
-                color: "#334155",
-                fontWeight: 450,
-                lineHeight: 1.55,
-                fontSize: { xs: "1rem", md: "1.12rem" },
-              }}
-            >
-              Give your team one place to triage, collaborate, and close cases without losing context.
-            </Typography>
-            <Stack direction={{ xs: "column", sm: "row" }} spacing={2} pt={2}>
-              <Button
-                component={Link}
-                href="/login"
-                variant="contained"
-                size="large"
-                disableElevation
+      <Box component="main">
+        <Box
+          sx={{
+            borderBottom: "1px solid rgba(100, 116, 139, 0.16)",
+            background:
+              "linear-gradient(180deg, #ffffff 0%, #f8fafc 100%)",
+          }}
+        >
+          <Container
+            maxWidth="xl"
+            sx={{
+              pt: { xs: 7, md: 10 },
+              pb: { xs: 5, md: 7 },
+              display: "grid",
+              gridTemplateColumns: { xs: "1fr", lg: "0.82fr 1.18fr" },
+              gap: { xs: 5, lg: 7 },
+              alignItems: "center",
+            }}
+          >
+            <Stack spacing={3.2}>
+              <Typography
+                component="h1"
+                variant="h1"
                 sx={{
-                  px: 4.5,
-                  py: 1.45,
-                  fontWeight: 700,
-                  backgroundColor: "#166534",
-                  "&:hover": { backgroundColor: "#14532d" },
+                  fontSize: { xs: "3rem", sm: "4.25rem", lg: "5.4rem" },
+                  lineHeight: 0.95,
+                  color: "#0f5132",
                 }}
               >
-                Sign In
-              </Button>
-              <Button
-                component={Link}
-                href="/login?mode=register"
-                variant="outlined"
-                size="large"
+                TreeCRM
+              </Typography>
+              <Typography
+                component="p"
                 sx={{
-                  px: 4.5,
-                  py: 1.45,
-                  fontWeight: 600,
-                  color: "#1e293b",
-                  borderColor: "rgba(15, 23, 42, 0.22)",
-                  "&:hover": {
-                    borderColor: "rgba(15, 23, 42, 0.45)",
-                    backgroundColor: "rgba(15, 23, 42, 0.03)",
-                  },
+                  maxWidth: 720,
+                  fontSize: { xs: "1.7rem", md: "2.55rem" },
+                  lineHeight: 1.08,
+                  fontWeight: 850,
                 }}
               >
-                Get Started
-              </Button>
+                Support operations, mapped clearly.
+              </Typography>
+              <Typography sx={{ maxWidth: 620, color: "#475569", fontSize: { xs: "1rem", md: "1.12rem" }, lineHeight: 1.7 }}>
+                Bring customer tickets, employee ownership, escalations, and admin controls into one calm workspace built for service teams that need context to travel with every case.
+              </Typography>
+              <Stack direction={{ xs: "column", sm: "row" }} spacing={1.4}>
+                <Button component={Link} href="/login" variant="contained" size="large">
+                  Sign in
+                </Button>
+                <Button component={Link} href="/login?mode=register" variant="outlined" size="large">
+                  Create customer account
+                </Button>
+              </Stack>
             </Stack>
+
+            <ProductWindow title="Operations workspace">
+              <Box sx={{ p: { xs: 2, md: 2.5 }, bgcolor: "#f8fafc" }}>
+                <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", md: "0.58fr 1.42fr" }, gap: 2 }}>
+                  <Paper variant="outlined" sx={{ p: 1.5, borderRadius: 1.5 }}>
+                    <Stack spacing={1.2}>
+                      {["Workspace", "Messages", "Escalations"].map((item, index) => (
+                        <Box
+                          key={item}
+                          sx={{
+                            px: 1.2,
+                            py: 0.9,
+                            borderRadius: 1,
+                            bgcolor: index === 0 ? "#e8f6ef" : "transparent",
+                            color: index === 0 ? "#0f5132" : "#475569",
+                            fontWeight: 800,
+                            fontSize: "0.86rem",
+                          }}
+                        >
+                          {item}
+                        </Box>
+                      ))}
+                    </Stack>
+                  </Paper>
+                  <Stack spacing={2}>
+                    <TreePreview />
+                    <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", sm: "repeat(3, 1fr)" }, gap: 1 }}>
+                      {["18 open cases", "4 high priority", "2 escalations"].map((item) => (
+                        <Paper key={item} variant="outlined" sx={{ p: 1.4, borderRadius: 1.5 }}>
+                          <Typography variant="body2" fontWeight={900}>
+                            {item}
+                          </Typography>
+                        </Paper>
+                      ))}
+                    </Box>
+                  </Stack>
+                </Box>
+              </Box>
+            </ProductWindow>
+          </Container>
+        </Box>
+
+        <Container id="product" maxWidth="xl" sx={{ py: { xs: 6, md: 9 } }}>
+          <Stack spacing={4}>
+            <Stack spacing={1.3} sx={{ maxWidth: 720 }}>
+              <Typography variant="h3">One workflow from portal to resolution</Typography>
+              <Typography color="text.secondary">
+                TreeCRM keeps the path visible: customer request, CSR ownership, manager review, executive visibility, and admin governance.
+              </Typography>
+            </Stack>
+            <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", md: "repeat(3, 1fr)" }, gap: 2 }}>
+              {workflowSteps.map((step, index) => (
+                <Paper key={step.label} variant="outlined" sx={{ p: 3, borderRadius: 2 }}>
+                  <Typography variant="caption" fontWeight={900} color="primary">
+                    0{index + 1}
+                  </Typography>
+                  <Typography variant="h6" sx={{ mt: 1 }}>
+                    {step.label}
+                  </Typography>
+                  <Typography variant="body2" color="text.secondary" sx={{ mt: 1, lineHeight: 1.7 }}>
+                    {step.detail}
+                  </Typography>
+                </Paper>
+              ))}
+            </Box>
           </Stack>
         </Container>
 
-        <Box
-          sx={{
-            py: { xs: 7, md: 9 },
-            borderTop: "1px solid rgba(15, 23, 42, 0.10)",
-            backgroundColor: "rgba(255,255,255,0.88)",
-          }}
-        >
-          <Container maxWidth="lg">
-            <Typography variant="h4" component="h2" fontWeight={800} textAlign="center" gutterBottom sx={{ color: "#0f172a" }}>
-              Why teams switch to TreeCRM
-            </Typography>
-            <Typography variant="subtitle1" sx={{ color: "#475569", textAlign: "center", mb: 6.5 }}>
-              Less back-and-forth, faster handling, and better customer trust.
-            </Typography>
-
-            <Box
-              sx={{
-                display: "grid",
-                gridTemplateColumns: { xs: "1fr", md: "repeat(3, 1fr)" },
-                gap: 2.5,
-              }}
-            >
-              <Card
-                sx={{
-                  height: "100%",
-                  border: "1px solid rgba(15, 23, 42, 0.10)",
-                  borderRadius: 3,
-                  boxShadow: "0 8px 30px rgba(15, 23, 42, 0.06)",
-                }}
-                elevation={0}
-              >
-                <CardContent sx={{ p: 4 }}>
-                  <Typography variant="h6" fontWeight={750} gutterBottom sx={{ color: "#0f172a" }}>
-                    Cut response time
-                  </Typography>
-                  <Typography sx={{ color: "#475569", lineHeight: 1.65 }}>
-                    Assign ownership instantly, keep full conversation history, and avoid repeated handoffs.
-                  </Typography>
-                </CardContent>
-              </Card>
-
-              <Card
-                sx={{
-                  height: "100%",
-                  border: "1px solid rgba(15, 23, 42, 0.10)",
-                  borderRadius: 3,
-                  boxShadow: "0 8px 30px rgba(15, 23, 42, 0.06)",
-                }}
-                elevation={0}
-              >
-                <CardContent sx={{ p: 4 }}>
-                  <Typography variant="h6" fontWeight={750} gutterBottom sx={{ color: "#0f172a" }}>
-                    Give customers clarity
-                  </Typography>
-                  <Typography sx={{ color: "#475569", lineHeight: 1.65 }}>
-                    Keep customers updated in real time so they always know what is happening and what comes next.
-                  </Typography>
-                </CardContent>
-              </Card>
-
-              <Card
-                sx={{
-                  height: "100%",
-                  border: "1px solid rgba(15, 23, 42, 0.10)",
-                  borderRadius: 3,
-                  boxShadow: "0 8px 30px rgba(15, 23, 42, 0.06)",
-                }}
-                elevation={0}
-              >
-                <CardContent sx={{ p: 4 }}>
-                  <Typography variant="h6" fontWeight={750} gutterBottom sx={{ color: "#0f172a" }}>
-                    Manage at scale
-                  </Typography>
-                  <Typography sx={{ color: "#475569", lineHeight: 1.65 }}>
-                    Standardize workflows, monitor team load, and keep service performance consistent as you grow.
-                  </Typography>
-                </CardContent>
-              </Card>
-            </Box>
+        <Box id="portal" sx={{ bgcolor: "#f8fafc", borderY: "1px solid rgba(100, 116, 139, 0.16)", py: { xs: 6, md: 9 } }}>
+          <Container maxWidth="xl" sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", lg: "0.82fr 1.18fr" }, gap: 4, alignItems: "center" }}>
+            <Stack spacing={1.4}>
+              <Typography variant="h3">A customer portal that stays readable</Typography>
+              <Typography color="text.secondary" sx={{ lineHeight: 1.7 }}>
+                Customers can create tickets, track status, continue conversations, and submit satisfaction ratings without seeing internal routing complexity.
+              </Typography>
+            </Stack>
+            <ProductWindow title="Customer portal">
+              <Box sx={{ p: 2.2, bgcolor: "#ffffff" }}>
+                <Stack spacing={1.5}>
+                  {ticketRows.map((row) => (
+                    <Box
+                      key={row[0]}
+                      sx={{
+                        display: "grid",
+                        gridTemplateColumns: { xs: "1fr", sm: "1.4fr 0.8fr 0.7fr 1fr" },
+                        gap: 1,
+                        px: 1.5,
+                        py: 1.2,
+                        borderRadius: 1.4,
+                        border: "1px solid rgba(100, 116, 139, 0.18)",
+                        bgcolor: row[2] === "High" ? "#fffbeb" : "#ffffff",
+                      }}
+                    >
+                      {row.map((cell) => (
+                        <Typography key={cell} variant="body2" fontWeight={cell === row[0] ? 800 : 600} color={cell === row[2] && cell === "High" ? "#b7791f" : "inherit"}>
+                          {cell}
+                        </Typography>
+                      ))}
+                    </Box>
+                  ))}
+                </Stack>
+              </Box>
+            </ProductWindow>
           </Container>
         </Box>
+
+        <Container id="operations" maxWidth="xl" sx={{ py: { xs: 6, md: 9 } }}>
+          <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", lg: "1.1fr 0.9fr" }, gap: 4, alignItems: "center" }}>
+            <ProductWindow title="Tree workspace">
+              <Box sx={{ p: 2.2, bgcolor: "#f8fafc" }}>
+                <TreePreview />
+              </Box>
+            </ProductWindow>
+            <Stack spacing={1.4}>
+              <Typography variant="h3">Operations work is visible by design</Typography>
+              <Typography color="text.secondary" sx={{ lineHeight: 1.7 }}>
+                The tree canvas gives each role a quick map of employee scope, customer load, active cases, and escalation pressure. Detail panels keep action controls close to the selected case.
+              </Typography>
+            </Stack>
+          </Box>
+        </Container>
+
+        <Box id="security" sx={{ bgcolor: "#f8fafc", borderTop: "1px solid rgba(100, 116, 139, 0.16)", py: { xs: 6, md: 9 } }}>
+          <Container maxWidth="xl" sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", lg: "0.86fr 1.14fr" }, gap: 4, alignItems: "center" }}>
+            <Stack spacing={1.4}>
+              <Typography variant="h3">Admin controls stay compact</Typography>
+              <Typography color="text.secondary" sx={{ lineHeight: 1.7 }}>
+                Provision employee accounts, connect CSRs to managers, manage reusable tags, and tune priority settings without turning setup into a separate product.
+              </Typography>
+            </Stack>
+            <ProductWindow title="Admin controls">
+              <Box sx={{ p: 2.2, bgcolor: "#ffffff" }}>
+                <Stack spacing={1.1}>
+                  {["Users by role", "Tag swatches", "Priority defaults"].map((label, index) => (
+                    <Box key={label} sx={{ display: "grid", gridTemplateColumns: "1fr 0.8fr 0.8fr", gap: 1, px: 1.4, py: 1.1, border: "1px solid rgba(100,116,139,0.18)", borderRadius: 1.3 }}>
+                      <Typography variant="body2" fontWeight={850}>{label}</Typography>
+                      <Typography variant="body2" color="text.secondary">{index === 0 ? "Admin" : index === 1 ? "Node color" : "High"}</Typography>
+                      <Typography variant="body2" color="primary" fontWeight={850}>{index === 0 ? "Active" : "Configured"}</Typography>
+                    </Box>
+                  ))}
+                </Stack>
+              </Box>
+            </ProductWindow>
+          </Container>
+        </Box>
+
+        <Container maxWidth="xl" sx={{ py: { xs: 6, md: 8 } }}>
+          <Paper variant="outlined" sx={{ p: { xs: 3, md: 5 }, borderRadius: 2, bgcolor: "#0f5132", color: "#ffffff" }}>
+            <Stack direction={{ xs: "column", md: "row" }} spacing={3} alignItems={{ md: "center" }} justifyContent="space-between">
+              <Box>
+                <Typography variant="h3" sx={{ color: "#ffffff" }}>
+                  Start with the right workspace
+                </Typography>
+                <Typography sx={{ color: "rgba(255,255,255,0.76)", mt: 1, maxWidth: 680 }}>
+                  Sign in to continue internal work, or create a customer account to begin a support conversation.
+                </Typography>
+              </Box>
+              <Stack direction={{ xs: "column", sm: "row" }} spacing={1.2}>
+                <Button component={Link} href="/login" variant="contained" sx={{ bgcolor: "#ffffff", color: "#0f5132", "&:hover": { bgcolor: "#e8f6ef" } }}>
+                  Sign in
+                </Button>
+                <Button component={Link} href="/login?mode=register" variant="outlined" sx={{ color: "#ffffff", borderColor: "rgba(255,255,255,0.42)", "&:hover": { borderColor: "#ffffff", bgcolor: "rgba(255,255,255,0.08)" } }}>
+                  Create customer account
+                </Button>
+              </Stack>
+            </Stack>
+          </Paper>
+        </Container>
       </Box>
     </Box>
   );
