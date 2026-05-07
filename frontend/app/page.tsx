@@ -66,8 +66,7 @@ function TreePreview() {
   return (
     <Box
       sx={{
-        position: "relative",
-        minHeight: 280,
+        aspectRatio: "520 / 280",
         borderRadius: 1.5,
         bgcolor: "#f8fafc",
         border: "1px solid rgba(100, 116, 139, 0.18)",
@@ -75,56 +74,56 @@ function TreePreview() {
       }}
     >
       <Box
-        aria-hidden
+        component="img"
+        src="/landing-tree-preview.svg"
+        alt="Tree workspace hierarchy preview"
         sx={{
-          position: "absolute",
-          inset: 0,
-          backgroundImage:
-            "linear-gradient(rgba(15,23,42,0.045) 1px, transparent 1px), linear-gradient(90deg, rgba(15,23,42,0.045) 1px, transparent 1px)",
-          backgroundSize: "36px 36px",
+          display: "block",
+          width: "100%",
+          height: "100%",
         }}
       />
-      <svg viewBox="0 0 520 280" style={{ position: "absolute", inset: 0, width: "100%", height: "100%" }}>
-        <g fill="none" stroke="#9bb8b1" strokeWidth="2">
-          <path d="M260 54 C214 95 165 112 118 146" />
-          <path d="M260 54 C306 95 360 112 408 146" />
-          <path d="M118 146 C98 184 74 206 52 232" />
-          <path d="M118 146 C146 184 180 206 210 232" />
-          <path d="M408 146 C382 184 348 206 316 232" />
-          <path d="M408 146 C434 184 462 206 488 232" />
-        </g>
-      </svg>
-      {[
-        { label: "Executive", x: "50%", y: 42, color: "#0f5132" },
-        { label: "Manager", x: "23%", y: 134, color: "#0f766e" },
-        { label: "Manager", x: "78%", y: 134, color: "#0284c7" },
-        { label: "High", x: "10%", y: 220, color: "#b7791f" },
-        { label: "Open", x: "40%", y: 220, color: "#0f6b45" },
-        { label: "Active", x: "61%", y: 220, color: "#0284c7" },
-        { label: "Resolved", x: "93%", y: 220, color: "#16a34a" },
-      ].map((node) => (
-        <Box
-          key={`${node.label}-${node.x}`}
-          sx={{
-            position: "absolute",
-            left: node.x,
-            top: node.y,
-            transform: "translateX(-50%)",
-            px: 1.2,
-            py: 0.8,
-            minWidth: 70,
-            textAlign: "center",
-            borderRadius: 1.25,
-            bgcolor: "#ffffff",
-            border: `1px solid ${node.color}`,
-            boxShadow: "0 12px 28px rgba(15, 23, 42, 0.08)",
-          }}
-        >
-          <Typography variant="caption" fontWeight={900} sx={{ color: node.color }}>
-            {node.label}
-          </Typography>
-        </Box>
-      ))}
+    </Box>
+  );
+}
+
+function OperationsWorkspacePreview() {
+  return (
+    <Box sx={{ p: { xs: 2, md: 2.5 }, bgcolor: "#f8fafc" }}>
+      <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", md: "0.58fr 1.42fr" }, gap: 2 }}>
+        <Paper variant="outlined" sx={{ p: 1.5, borderRadius: 1.5 }}>
+          <Stack spacing={1.2}>
+            {["Workspace", "Messages", "Escalations"].map((item, index) => (
+              <Box
+                key={item}
+                sx={{
+                  px: 1.2,
+                  py: 0.9,
+                  borderRadius: 1,
+                  bgcolor: index === 0 ? "#e8f6ef" : "transparent",
+                  color: index === 0 ? "#0f5132" : "#475569",
+                  fontWeight: 800,
+                  fontSize: "0.86rem",
+                }}
+              >
+                {item}
+              </Box>
+            ))}
+          </Stack>
+        </Paper>
+        <Stack spacing={2}>
+          <TreePreview />
+          <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", sm: "repeat(3, 1fr)" }, gap: 1 }}>
+            {["18 open cases", "4 high priority", "2 escalations"].map((item) => (
+              <Paper key={item} variant="outlined" sx={{ p: 1.4, borderRadius: 1.5 }}>
+                <Typography variant="body2" fontWeight={900}>
+                  {item}
+                </Typography>
+              </Paper>
+            ))}
+          </Box>
+        </Stack>
+      </Box>
     </Box>
   );
 }
@@ -255,42 +254,7 @@ export default function HomePage() {
             </Stack>
 
             <ProductWindow title="Operations workspace">
-              <Box sx={{ p: { xs: 2, md: 2.5 }, bgcolor: "#f8fafc" }}>
-                <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", md: "0.58fr 1.42fr" }, gap: 2 }}>
-                  <Paper variant="outlined" sx={{ p: 1.5, borderRadius: 1.5 }}>
-                    <Stack spacing={1.2}>
-                      {["Workspace", "Messages", "Escalations"].map((item, index) => (
-                        <Box
-                          key={item}
-                          sx={{
-                            px: 1.2,
-                            py: 0.9,
-                            borderRadius: 1,
-                            bgcolor: index === 0 ? "#e8f6ef" : "transparent",
-                            color: index === 0 ? "#0f5132" : "#475569",
-                            fontWeight: 800,
-                            fontSize: "0.86rem",
-                          }}
-                        >
-                          {item}
-                        </Box>
-                      ))}
-                    </Stack>
-                  </Paper>
-                  <Stack spacing={2}>
-                    <TreePreview />
-                    <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", sm: "repeat(3, 1fr)" }, gap: 1 }}>
-                      {["18 open cases", "4 high priority", "2 escalations"].map((item) => (
-                        <Paper key={item} variant="outlined" sx={{ p: 1.4, borderRadius: 1.5 }}>
-                          <Typography variant="body2" fontWeight={900}>
-                            {item}
-                          </Typography>
-                        </Paper>
-                      ))}
-                    </Box>
-                  </Stack>
-                </Box>
-              </Box>
+              <OperationsWorkspacePreview />
             </ProductWindow>
           </Container>
         </Box>
@@ -361,10 +325,8 @@ export default function HomePage() {
 
         <Container id="operations" maxWidth="xl" sx={{ py: { xs: 6, md: 9 } }}>
           <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", lg: "1.1fr 0.9fr" }, gap: 4, alignItems: "center" }}>
-            <ProductWindow title="Tree workspace">
-              <Box sx={{ p: 2.2, bgcolor: "#f8fafc" }}>
-                <TreePreview />
-              </Box>
+            <ProductWindow title="Operations workspace">
+              <OperationsWorkspacePreview />
             </ProductWindow>
             <Stack spacing={1.4}>
               <Typography variant="h3">Operations work is visible by design</Typography>

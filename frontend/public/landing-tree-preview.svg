@@ -1,0 +1,38 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 520 280" role="img" aria-labelledby="title desc">
+  <title id="title">Tree workspace preview</title>
+  <desc id="desc">A hierarchy map with Executive above two Managers and four status nodes: High, Open, Active, and Resolved.</desc>
+  <defs>
+    <pattern id="grid" width="36" height="36" patternUnits="userSpaceOnUse">
+      <path d="M36 0H0V36" fill="none" stroke="#0f172a" stroke-opacity=".055" stroke-width="1" />
+    </pattern>
+    <filter id="nodeShadow" x="-20%" y="-30%" width="140%" height="160%">
+      <feDropShadow dx="0" dy="8" stdDeviation="9" flood-color="#0f172a" flood-opacity=".08" />
+    </filter>
+  </defs>
+  <rect x=".5" y=".5" width="519" height="279" rx="12" fill="#f8fafc" stroke="#cbd5e1" />
+  <rect x="1" y="1" width="518" height="278" rx="11.5" fill="url(#grid)" />
+  <g fill="none" stroke="#9bb8b1" stroke-linecap="round" stroke-width="2">
+    <path d="M260 72 150 144" />
+    <path d="M260 72 370 144" />
+    <path d="M150 162 76 238" />
+    <path d="M150 162 210 238" />
+    <path d="M370 162 316 238" />
+    <path d="M370 162 444 238" />
+  </g>
+  <g filter="url(#nodeShadow)" font-family="Arial, Helvetica, sans-serif" font-size="13" font-weight="800">
+    <rect x="220" y="44" width="80" height="38" rx="9" fill="#fff" stroke="#0f5132" />
+    <text x="260" y="68" fill="#0f5132" text-anchor="middle">Executive</text>
+    <rect x="102" y="134" width="76" height="38" rx="9" fill="#fff" stroke="#0f766e" />
+    <text x="140" y="158" fill="#0f766e" text-anchor="middle">Manager</text>
+    <rect x="342" y="134" width="76" height="38" rx="9" fill="#fff" stroke="#0284c7" />
+    <text x="380" y="158" fill="#0284c7" text-anchor="middle">Manager</text>
+    <rect x="45" y="222" width="68" height="38" rx="9" fill="#fff" stroke="#b7791f" />
+    <text x="79" y="246" fill="#b7791f" text-anchor="middle">High</text>
+    <rect x="176" y="222" width="68" height="38" rx="9" fill="#fff" stroke="#0f6b45" />
+    <text x="210" y="246" fill="#0f6b45" text-anchor="middle">Open</text>
+    <rect x="282" y="222" width="68" height="38" rx="9" fill="#fff" stroke="#0284c7" />
+    <text x="316" y="246" fill="#0284c7" text-anchor="middle">Active</text>
+    <rect x="408" y="222" width="76" height="38" rx="9" fill="#fff" stroke="#16a34a" />
+    <text x="446" y="246" fill="#16a34a" text-anchor="middle">Resolved</text>
+  </g>
+</svg>
